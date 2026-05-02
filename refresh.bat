@@ -52,21 +52,21 @@ if exist "~$PSI Cash Monitoring Master.xlsx" (
     goto :ERROR_END
 )
 
-REM --- 3. Ensure openpyxl is installed ---
+REM --- 3. Ensure required packages are installed ---
 call :LOG ""
-call :LOG "[1/4] Cek package openpyxl ..."
-%PY% -c "import openpyxl" >nul 2>nul
+call :LOG "[1/4] Cek packages (openpyxl, cryptography) ..."
+%PY% -c "import openpyxl, cryptography" >nul 2>nul
 if errorlevel 1 (
-    call :LOG "      openpyxl belum terinstall. Installing ..."
+    call :LOG "      Package belum terinstall. Installing ..."
     %PY% -m pip install --quiet --upgrade pip >> "%LOGFILE%" 2>&1
-    %PY% -m pip install --quiet openpyxl >> "%LOGFILE%" 2>&1
+    %PY% -m pip install --quiet -r scripts\requirements.txt >> "%LOGFILE%" 2>&1
     if errorlevel 1 (
-        call :LOG "[ERROR] Gagal install openpyxl. Lihat detail di refresh.log"
+        call :LOG "[ERROR] Gagal install package. Lihat detail di refresh.log"
         goto :ERROR_END
     )
-    call :LOG "      openpyxl berhasil di-install."
+    call :LOG "      Packages berhasil di-install."
 ) else (
-    call :LOG "      openpyxl sudah terinstall."
+    call :LOG "      Packages sudah terinstall."
 )
 
 REM --- 4. Run the refresh script ---

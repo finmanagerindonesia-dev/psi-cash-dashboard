@@ -21,7 +21,6 @@ function fmt(n, cur){
 function fmtBig(n, cur){
   if(n===null||n===undefined||isNaN(n)) return "-";
   const f = FORMATS[cur||CUR];
-  const v = n / f.div;
   return f.label + " " + fmt(n, cur);
 }
 function fmtCompact(n, cur){
@@ -42,6 +41,69 @@ function el(html){
   return t.content.firstChild;
 }
 
+// ----- Encryption (matches Python lib_crypto.py) -----
+async function decryptPayload(enc, password){
+  const b64 = (s) => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+  const baseKey = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(password),
+    {name:"PBKDF2"}, false, ["deriveKey"]
+  );
+  const key = await crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt: b64(enc.salt), iterations: enc.iter, hash:"SHA-256"},
+    baseKey,
+    {name:"AES-GCM", length: 256},
+    false, ["decrypt"]
+  );
+  const plain = await crypto.subtle.decrypt(
+    {name:"AES-GCM", iv: b64(enc.iv)}, key, b64(enc.ct)
+  );
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+async function tryDecryptAndApply(enc, password){
+  try {
+    const data = await decryptPayload(enc, password);
+    window._PSI_ENCRYPTED = true;
+    sessionStorage.setItem("psi_pw", password);
+    hidePwGate();
+    applyData(data);
+    return true;
+  } catch(e){ return false; }
+}
+
+function showPwGate(enc){
+  const gate = document.getElementById("pwGate");
+  gate.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+  const form = document.getElementById("pwForm");
+  const input = document.getElementById("pwInput");
+  const btn = document.getElementById("pwBtn");
+  const err = document.getElementById("pwErr");
+  const cached = sessionStorage.getItem("psi_pw");
+  if(cached){ tryDecryptAndApply(enc, cached); }
+  setTimeout(()=>input.focus(), 50);
+  form.addEventListener("submit", async (e)=>{
+    e.preventDefault();
+    err.classList.add("hidden");
+    btn.disabled = true; btn.textContent = "Membuka...";
+    const ok = await tryDecryptAndApply(enc, input.value);
+    if(!ok){
+      err.textContent = "Password salah. Coba lagi.";
+      err.classList.remove("hidden");
+      btn.disabled = false; btn.textContent = "Buka Dashboard";
+      input.select();
+    }
+  });
+}
+function hidePwGate(){
+  document.getElementById("pwGate").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+function logout(){
+  sessionStorage.removeItem("psi_pw");
+  location.reload();
+}
+
 // ----- Load -----
 function applyData(d){
   DATA = d;
@@ -53,21 +115,25 @@ function applyData(d){
     "Update terakhir: " + new Date(d.generated_at).toLocaleString("id-ID");
   populatePeriodSelect();
   render();
+  if(window._PSI_ENCRYPTED){
+    document.getElementById("logoutBtn").classList.remove("hidden");
+  }
 }
 
 function load(){
-  // 1) If data is embedded via data.js (works on file://), use it directly.
+  if (window.PSI_DATA_ENCRYPTED) { showPwGate(window.PSI_DATA_ENCRYPTED); return; }
   if (window.PSI_DATA) {
     try { applyData(window.PSI_DATA); return; }
     catch(e){ console.error("Embedded data error:", e); }
   }
-  // 2) Otherwise, fetch data.json (works when served via Vercel / HTTP).
-  fetch("data.json?ts="+Date.now()).then(r=>r.json()).then(applyData).catch(e=>{
+  fetch("data.json?ts="+Date.now()).then(r=>r.json()).then(d=>{
+    if(d && d.encrypted){ showPwGate(d); }
+    else { applyData(d); }
+  }).catch(e=>{
     document.getElementById("root").innerHTML =
       `<div class="empty"><b>Gagal memuat data dashboard.</b><br><br>` +
       `<small>${escapeHtml(e.message)}</small><br><br>` +
-      `Pastikan <code>refresh.bat</code> sudah dijalankan dan file ` +
-      `<code>public/data.js</code> serta <code>public/data.json</code> sudah ada di folder.</div>`;
+      `Pastikan <code>refresh.bat</code> sudah dijalankan.</div>`;
   });
 }
 
@@ -97,7 +163,6 @@ function renderKPIs(){
   const outflow = D.trend.outflow[idx];
   const net = D.trend.net[idx];
   const ending = D.trend.ending[idx];
-  // Compare vs previous month
   const prevEnding = idx>0 ? D.trend.ending[idx-1] : null;
   const prevNet = idx>0 ? D.trend.net[idx-1] : null;
   const trendBadge = (now, prev) => {
@@ -129,7 +194,6 @@ function renderKPIs(){
   return div;
 }
 
-// ----- Row 2: Incoming + Outflow accordions -----
 function renderRow2(){
   const div = el(`<div class="row2"></div>`);
   div.appendChild(renderIncoming());
@@ -208,9 +272,7 @@ function renderOutflow(){
           <span class="sname">${escapeHtml(s.label)}<span class="scount">(${s.party_count} pihak)</span></span>
           <span class="samt amount neg">${fmtBig(s.amount)}</span>
         </div>
-        <div class="parties">
-          ${partyRows || '<div class="muted">Tidak ada detail.</div>'}
-        </div>
+        <div class="parties">${partyRows || '<div class="muted">Tidak ada detail.</div>'}</div>
       </div>`;
     }).join("");
     return `
@@ -241,23 +303,16 @@ window.toggleSub = toggleSub;
 function renderBankMatrix(){
   const D = DATA;
   const m = D.bank_position_matrix;
-  const div = FORMATS[CUR].div;
   const card = el(`<div class="card">
     <h2>Posisi Kas di Tiap Bank (per akhir bulan)</h2>
     <div class="scroll-x" id="bmBody"></div></div>`);
-  // Heatmap calc
   const allEndings = m.banks.flatMap(b=>m.periods.map(p=>m.data[b][p].ending));
   const maxAbs = Math.max(...allEndings.map(Math.abs), 1);
   const heatColor = (v)=>{
     if(Math.abs(v) < 1) return "#fafbfd";
     const intensity = Math.min(Math.abs(v)/maxAbs, 1);
-    if(v>0){
-      const a = (0.10 + intensity*0.55).toFixed(2);
-      return `rgba(10,135,84,${a})`;
-    } else {
-      const a = (0.10 + intensity*0.55).toFixed(2);
-      return `rgba(192,57,43,${a})`;
-    }
+    const a = (0.10 + intensity*0.55).toFixed(2);
+    return v>0 ? `rgba(10,135,84,${a})` : `rgba(192,57,43,${a})`;
   };
   const periodHeaders = D.periods.map(p=>`<th>${escapeHtml(p.label_long)}</th>`).join("");
   const rows = m.banks.map(b=>{
@@ -279,7 +334,6 @@ function renderBankMatrix(){
   return card;
 }
 
-// ----- Trend chart -----
 function renderTrend(){
   const D = DATA;
   const card = el(`<div class="card">
@@ -310,10 +364,8 @@ function renderTrend(){
       ]},
       options:{
         responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{display:false},
-          tooltip:{callbacks:{label:(c)=>` ${c.dataset.label}: ${FORMATS[CUR].label} ${c.parsed.y.toLocaleString("en-US",{maximumFractionDigits:0})}`}}
-        },
+        plugins:{legend:{display:false},
+          tooltip:{callbacks:{label:(c)=>` ${c.dataset.label}: ${FORMATS[CUR].label} ${c.parsed.y.toLocaleString("en-US",{maximumFractionDigits:0})}`}}},
         scales:{y:{ticks:{callback:(v)=>fmtCompact(v*div)}}}
       }
     });
@@ -321,7 +373,6 @@ function renderTrend(){
   return card;
 }
 
-// ----- CF Summary detail (collapsible) -----
 function renderCFSummary(){
   const D = DATA;
   const card = el(`<div class="card">
@@ -367,7 +418,6 @@ function renderCFSummary(){
   return card;
 }
 
-// ----- Currency toggle -----
 document.getElementById("curgrp").addEventListener("click", (e)=>{
   const b = e.target.closest("button"); if(!b) return;
   CUR = b.dataset.cur;
@@ -376,4 +426,5 @@ document.getElementById("curgrp").addEventListener("click", (e)=>{
   if(DATA) render();
 });
 document.querySelectorAll("#curgrp button").forEach(x=>x.classList.toggle("active", x.dataset.cur===CUR));
+document.getElementById("logoutBtn").addEventListener("click", logout);
 load();

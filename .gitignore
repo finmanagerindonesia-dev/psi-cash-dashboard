@@ -12,6 +12,10 @@ venv/
 # Backups (kept locally, not pushed to Vercel)
 backups/
 
+# Dashboard password (NEVER commit this!)
+dashboard-password.txt
+refresh.log
+
 # OS
 .DS_Store
 Thumbs.db

@@ -9,6 +9,24 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
+
+<!-- Password gate (shown if data is encrypted) -->
+<div id="pwGate" class="pw-gate hidden">
+  <div class="pw-card">
+    <div class="pw-logo">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+    </div>
+    <h1>PSI Cash Flow Dashboard</h1>
+    <p class="muted">Dashboard ini terlindungi password. Masukkan password untuk lihat data.</p>
+    <form id="pwForm" autocomplete="off">
+      <input type="password" id="pwInput" placeholder="Password" autocomplete="current-password" autofocus>
+      <button type="submit" id="pwBtn">Buka Dashboard</button>
+      <div id="pwErr" class="pw-err hidden"></div>
+    </form>
+    <p class="muted small">Password diberikan oleh admin. Tidak ada self-signup.</p>
+  </div>
+</div>
+
 <header>
   <div class="header-inner">
     <div>
@@ -27,6 +45,7 @@
           <button data-cur="USD">USD</button>
           <button data-cur="INR">INR</button>
         </div>
+        <button id="logoutBtn" class="logout-btn hidden" title="Keluar">Logout</button>
       </div>
     </div>
   </div>
