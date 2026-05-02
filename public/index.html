@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PSI Cash Flow Dashboard</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <div>
+      <h1 id="company">PT Prasad Seeds Indonesia</h1>
+      <div class="sub">Dashboard Arus Kas - Auto-generated dari Excel Treasury</div>
+    </div>
+    <div class="header-right">
+      <div class="stamp" id="stamp">Memuat data...</div>
+      <div class="controls">
+        <div class="ctrl">
+          <label>Bulan:</label>
+          <select id="periodSel"></select>
+        </div>
+        <div class="btn-grp" id="curgrp">
+          <button class="active" data-cur="IDR">IDR</button>
+          <button data-cur="USD">USD</button>
+          <button data-cur="INR">INR</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="container" id="root">
+  <div class="empty">Memuat data dashboard...</div>
+</main>
+
+<footer>
+  <div class="container">
+    <small>Klik nama kategori untuk lihat detail. Toggle mata uang di kanan atas.
+    Data: <code>public/data.json</code> - di-refresh oleh <code>refresh.bat</code>.</small>
+  </div>
+</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
