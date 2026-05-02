@@ -1,7 +1,7 @@
 // Auto-generated. Plain (no password set in dashboard-password.txt).
 window.PSI_DATA = {
   "company": "PT Prasad Seeds Indonesia",
-  "generated_at": "2026-05-02T21:48:32",
+  "generated_at": "2026-05-02T21:49:00",
   "rates": {
     "usd": 17000.0,
     "inr": 189.0
