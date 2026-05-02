@@ -1,0 +1,39 @@
+ 
+==================================================== 
+  PSI CASH FLOW DASHBOARD - REFRESH 
+  Sat 05/02/2026 20:06:44.30 
+==================================================== 
+ECHO is off.
+[INFO] Python detected: python 
+Python 3.14.4
+ECHO is off.
+[1/4] Cek package openpyxl ... 
+      openpyxl sudah terinstall. 
+ECHO is off.
+[2/4] Refresh CF Summary + Bank sheets + data.json ... 
+Reading PSI Cash Monitoring Master.xlsx ...
+  899 transactions loaded
+  Rates: USD = Rp 17,000  |  INR = Rp 189
+  Periods found: 2026-01, 2026-02, 2026-03
+Building CF Summary structure ...
+Writing CF Summary sheet ...
+Writing Bank - <Month> sheets ...
+  Backup saved to: PSI Cash Monitoring Master.20260502_200645.xlsx
+  Saved: PSI Cash Monitoring Master.xlsx
+Building dashboard data ...
+  Saved: public\data.json
+  Saved: public\data.js
+
+Refresh OK. Open public/index.html to view dashboard.
+      OK - sheets dan data.json updated. 
+ECHO is off.
+[INFO] Belum ada Git repo - skip push ke Vercel. 
+       Untuk setup Git + Vercel, buka README.md. 
+ECHO is off.
+==================================================== 
+  SELESAI. 
+  - Excel: PSI Cash Monitoring Master.xlsx (refreshed) 
+  - Dashboard: public\index.html 
+  - Data:      public\data.json 
+==================================================== 
+ECHO is off.
