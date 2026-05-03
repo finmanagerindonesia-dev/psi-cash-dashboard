@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,13 +17,13 @@
       <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
     </div>
     <h1>PSI Cash Flow Dashboard</h1>
-    <p class="muted">Dashboard ini terlindungi password. Masukkan password untuk lihat data.</p>
+    <p class="muted">This dashboard is password-protected. Enter the password to view the data.</p>
     <form id="pwForm" autocomplete="off">
       <input type="password" id="pwInput" placeholder="Password" autocomplete="current-password" autofocus>
-      <button type="submit" id="pwBtn">Buka Dashboard</button>
+      <button type="submit" id="pwBtn">Open Dashboard</button>
       <div id="pwErr" class="pw-err hidden"></div>
     </form>
-    <p class="muted small">Password diberikan oleh admin. Tidak ada self-signup.</p>
+    <p class="muted small">Password is provided by the admin. No self-signup.</p>
   </div>
 </div>
 
@@ -31,13 +31,13 @@
   <div class="header-inner">
     <div>
       <h1 id="company">PT Prasad Seeds Indonesia</h1>
-      <div class="sub">Dashboard Arus Kas - Auto-generated dari Excel Treasury</div>
+      <div class="sub">Cash Flow Dashboard - Auto-generated from Treasury workbook</div>
     </div>
     <div class="header-right">
-      <div class="stamp" id="stamp">Memuat data...</div>
+      <div class="stamp" id="stamp">Loading data...</div>
       <div class="controls">
         <div class="ctrl">
-          <label>Bulan:</label>
+          <label>Month:</label>
           <select id="periodSel"></select>
         </div>
         <div class="btn-grp" id="curgrp">
@@ -45,20 +45,20 @@
           <button data-cur="USD">USD</button>
           <button data-cur="INR">INR</button>
         </div>
-        <button id="logoutBtn" class="logout-btn hidden" title="Keluar">Logout</button>
+        <button id="logoutBtn" class="logout-btn hidden" title="Log out">Logout</button>
       </div>
     </div>
   </div>
 </header>
 
 <main class="container" id="root">
-  <div class="empty">Memuat data dashboard...</div>
+  <div class="empty">Loading dashboard data...</div>
 </main>
 
 <footer>
   <div class="container">
-    <small>Klik nama kategori untuk lihat detail. Toggle mata uang di kanan atas.
-    Data: <code>public/data.json</code> - di-refresh oleh <code>refresh.bat</code>.</small>
+    <small>Click any category to drill down to vendor-level detail. Toggle currency in the top-right.
+    Data refreshed via <code>refresh.bat</code>.</small>
   </div>
 </footer>
 

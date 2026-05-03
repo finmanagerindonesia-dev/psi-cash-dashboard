@@ -27,9 +27,9 @@ function fmtCompact(n, cur){
   if(n===null||n===undefined||isNaN(n)) return "-";
   const f = FORMATS[cur||CUR];
   const v = Math.abs(n / f.div);
-  let s; if(v>=1e9) s=(v/1e9).toFixed(2)+" M";
-  else if(v>=1e6) s=(v/1e6).toFixed(1)+" jt";
-  else if(v>=1e3) s=(v/1e3).toFixed(0)+" rb";
+  let s; if(v>=1e9) s=(v/1e9).toFixed(2)+"B";
+  else if(v>=1e6) s=(v/1e6).toFixed(1)+"M";
+  else if(v>=1e3) s=(v/1e3).toFixed(0)+"K";
   else s=v.toFixed(0);
   return (n<0?"-":"")+s;
 }
@@ -85,12 +85,12 @@ function showPwGate(enc){
   form.addEventListener("submit", async (e)=>{
     e.preventDefault();
     err.classList.add("hidden");
-    btn.disabled = true; btn.textContent = "Membuka...";
+    btn.disabled = true; btn.textContent = "Opening...";
     const ok = await tryDecryptAndApply(enc, input.value);
     if(!ok){
-      err.textContent = "Password salah. Coba lagi.";
+      err.textContent = "Incorrect password. Try again.";
       err.classList.remove("hidden");
-      btn.disabled = false; btn.textContent = "Buka Dashboard";
+      btn.disabled = false; btn.textContent = "Open Dashboard";
       input.select();
     }
   });
@@ -112,7 +112,7 @@ function applyData(d){
   }
   document.getElementById("company").textContent = d.company;
   document.getElementById("stamp").textContent =
-    "Update terakhir: " + new Date(d.generated_at).toLocaleString("id-ID");
+    "Last updated: " + new Date(d.generated_at).toLocaleString("en-US");
   populatePeriodSelect();
   render();
   if(window._PSI_ENCRYPTED){
@@ -131,9 +131,9 @@ function load(){
     else { applyData(d); }
   }).catch(e=>{
     document.getElementById("root").innerHTML =
-      `<div class="empty"><b>Gagal memuat data dashboard.</b><br><br>` +
+      `<div class="empty"><b>Failed to load dashboard data.</b><br><br>` +
       `<small>${escapeHtml(e.message)}</small><br><br>` +
-      `Pastikan <code>refresh.bat</code> sudah dijalankan.</div>`;
+      `Make sure <code>refresh.bat</code> has been run first.</div>`;
   });
 }
 
@@ -175,22 +175,22 @@ function renderKPIs(){
   };
   const div = el(`<div class="kpi-row"></div>`);
   div.appendChild(el(`<div class="kpi pos">
-    <div class="lbl">Posisi Kas Akhir ${p.label_short}</div>
+    <div class="lbl">Cash Position - End of ${p.label_short}</div>
     <div class="val">${fmtBig(ending)}${trendBadge(ending, prevEnding)}</div>
-    <div class="sub">Total saldo seluruh rekening bank</div></div>`));
+    <div class="sub">Total balance across all bank accounts</div></div>`));
   div.appendChild(el(`<div class="kpi pos">
-    <div class="lbl">Uang Masuk - ${p.label_short}</div>
+    <div class="lbl">Inflow - ${p.label_short}</div>
     <div class="val">${fmtBig(inflow)}</div>
-    <div class="sub">Customer + Pinjaman + Lain-lain</div></div>`));
+    <div class="sub">Customers + Bank Loans + Others</div></div>`));
   div.appendChild(el(`<div class="kpi neg">
-    <div class="lbl">Uang Keluar - ${p.label_short}</div>
+    <div class="lbl">Outflow - ${p.label_short}</div>
     <div class="val">${fmtBig(outflow)}</div>
-    <div class="sub">CAPEX + OPEX + Pinjaman + Biaya Bank</div></div>`));
+    <div class="sub">CAPEX + OPEX + Loan Repayments + Finance Cost</div></div>`));
   const netCls = net>=0 ? "pos" : "neg";
   div.appendChild(el(`<div class="kpi ${netCls}">
-    <div class="lbl">Net (Masuk - Keluar) - ${p.label_short}</div>
+    <div class="lbl">Net (Inflow - Outflow) - ${p.label_short}</div>
     <div class="val">${fmtBig(net)}${trendBadge(net, prevNet)}</div>
-    <div class="sub">${net>=0 ? "Surplus bulan ini" : "Defisit bulan ini"}</div></div>`));
+    <div class="sub">${net>=0 ? "Surplus this month" : "Deficit this month"}</div></div>`));
   return div;
 }
 
@@ -206,10 +206,10 @@ function renderIncoming(){
   const data = D.incoming_drill[SELECTED_PERIOD];
   const periodLbl = D.periods.find(p=>p.key===SELECTED_PERIOD).label_long;
   const card = el(`<div class="card">
-    <h2>Uang Masuk Dari Mana? <span class="pill">${escapeHtml(periodLbl)}</span></h2>
+    <h2>Where Did the Money Come From? <span class="pill">${escapeHtml(periodLbl)}</span></h2>
     <div class="body" id="incBody"></div></div>`);
   if(!data || !data.groups.length){
-    card.querySelector("#incBody").innerHTML = `<div class="empty">Tidak ada data untuk bulan ini.</div>`;
+    card.querySelector("#incBody").innerHTML = `<div class="empty">No data for this period.</div>`;
     return card;
   }
   const total = data.total;
@@ -230,15 +230,15 @@ function renderIncoming(){
       </div>
       <div class="fbar-wrap"><div class="fbar pos"><i style="width:${(Math.abs(g.amount)/max*100).toFixed(1)}%"></i></div></div>
       <div class="fbody">
-        <div class="muted" style="margin-bottom:6px;font-size:11.5px">${g.party_count} pihak (top ${g.parties.length}):</div>
-        ${partyRows || '<div class="muted">Tidak ada detail.</div>'}
+        <div class="muted" style="margin-bottom:6px;font-size:11.5px">${g.party_count} parties (top ${g.parties.length}):</div>
+        ${partyRows || '<div class="muted">No detail available.</div>'}
       </div>
     </div>`;
   }).join("");
   card.querySelector("#incBody").innerHTML = `
     <div class="flow">${groups}</div>
     <div style="margin-top:14px;padding:12px 16px;background:var(--pos-bg);border-radius:9px;font-weight:700;color:var(--pos);display:flex;justify-content:space-between">
-      <span>TOTAL UANG MASUK</span><span>${fmtBig(total)}</span>
+      <span>TOTAL INFLOW</span><span>${fmtBig(total)}</span>
     </div>`;
   return card;
 }
@@ -248,10 +248,10 @@ function renderOutflow(){
   const data = D.outflow_drill[SELECTED_PERIOD];
   const periodLbl = D.periods.find(p=>p.key===SELECTED_PERIOD).label_long;
   const card = el(`<div class="card">
-    <h2>Uang Keluar Ke Mana? <span class="pill">${escapeHtml(periodLbl)}</span></h2>
+    <h2>Where Did the Money Go? <span class="pill">${escapeHtml(periodLbl)}</span></h2>
     <div class="body" id="outBody"></div></div>`);
   if(!data || !data.buckets.length){
-    card.querySelector("#outBody").innerHTML = `<div class="empty">Tidak ada data untuk bulan ini.</div>`;
+    card.querySelector("#outBody").innerHTML = `<div class="empty">No data for this period.</div>`;
     return card;
   }
   const total = data.total;
@@ -269,10 +269,10 @@ function renderOutflow(){
       <div class="subgroup" data-si="${si}">
         <div class="shead" onclick="toggleSub(this.parentElement)">
           <span class="arrow">&#9656;</span>
-          <span class="sname">${escapeHtml(s.label)}<span class="scount">(${s.party_count} pihak)</span></span>
+          <span class="sname">${escapeHtml(s.label)}<span class="scount">(${s.party_count} parties)</span></span>
           <span class="samt amount neg">${fmtBig(s.amount)}</span>
         </div>
-        <div class="parties">${partyRows || '<div class="muted">Tidak ada detail.</div>'}</div>
+        <div class="parties">${partyRows || '<div class="muted">No detail available.</div>'}</div>
       </div>`;
     }).join("");
     return `
@@ -289,7 +289,7 @@ function renderOutflow(){
   card.querySelector("#outBody").innerHTML = `
     <div class="flow">${buckets}</div>
     <div style="margin-top:14px;padding:12px 16px;background:var(--neg-bg);border-radius:9px;font-weight:700;color:var(--neg);display:flex;justify-content:space-between">
-      <span>TOTAL UANG KELUAR</span><span>${fmtBig(total)}</span>
+      <span>TOTAL OUTFLOW</span><span>${fmtBig(total)}</span>
     </div>`;
   return card;
 }
@@ -304,7 +304,7 @@ function renderBankMatrix(){
   const D = DATA;
   const m = D.bank_position_matrix;
   const card = el(`<div class="card">
-    <h2>Posisi Kas di Tiap Bank (per akhir bulan)</h2>
+    <h2>Bank Position - End of Each Month</h2>
     <div class="scroll-x" id="bmBody"></div></div>`);
   const allEndings = m.banks.flatMap(b=>m.periods.map(p=>m.data[b][p].ending));
   const maxAbs = Math.max(...allEndings.map(Math.abs), 1);
@@ -329,7 +329,7 @@ function renderBankMatrix(){
     <table class="bank-matrix">
       <thead><tr><th>Bank</th>${periodHeaders}</tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr class="total"><td>TOTAL POSISI KAS</td>${totalRow}</tr></tfoot>
+      <tfoot><tr class="total"><td>TOTAL CASH POSITION</td>${totalRow}</tr></tfoot>
     </table>`;
   return card;
 }
@@ -337,12 +337,12 @@ function renderBankMatrix(){
 function renderTrend(){
   const D = DATA;
   const card = el(`<div class="card">
-    <h2>Tren Arus Kas</h2>
+    <h2>Cash Flow Trend</h2>
     <div class="legend-mini">
-      <span><i style="background:#0a8754"></i>Uang Masuk</span>
-      <span><i style="background:#c0392b"></i>Uang Keluar</span>
+      <span><i style="background:#0a8754"></i>Inflow</span>
+      <span><i style="background:#c0392b"></i>Outflow</span>
       <span><i style="background:#1f3864"></i>Net</span>
-      <span><i style="background:#f0a020"></i>Posisi Kas Akhir</span>
+      <span><i style="background:#f0a020"></i>Ending Cash</span>
     </div>
     <div class="body"><div class="chart-wrap tall"><canvas id="ch_trend"></canvas></div></div></div>`);
   setTimeout(()=>{
@@ -353,13 +353,13 @@ function renderTrend(){
     CHARTS.trend = new Chart(ctx,{
       type:"bar",
       data:{labels,datasets:[
-        {label:"Uang Masuk", data:D.trend.inflow.map(v=>v/div),
+        {label:"Inflow", data:D.trend.inflow.map(v=>v/div),
          backgroundColor:"#0a875499", borderColor:"#0a8754", borderWidth:1, order:2},
-        {label:"Uang Keluar", data:D.trend.outflow.map(v=>v/div),
+        {label:"Outflow", data:D.trend.outflow.map(v=>v/div),
          backgroundColor:"#c0392b99", borderColor:"#c0392b", borderWidth:1, order:2},
         {label:"Net", type:"line", data:D.trend.net.map(v=>v/div),
          borderColor:"#1f3864", backgroundColor:"#1f386422", borderWidth:2.5, tension:.25, pointRadius:5, order:1},
-        {label:"Posisi Kas Akhir", type:"line", data:D.trend.ending.map(v=>v/div),
+        {label:"Ending Cash Position", type:"line", data:D.trend.ending.map(v=>v/div),
          borderColor:"#f0a020", borderWidth:2.5, tension:.25, pointRadius:5, borderDash:[4,3], order:1},
       ]},
       options:{
@@ -376,14 +376,14 @@ function renderTrend(){
 function renderCFSummary(){
   const D = DATA;
   const card = el(`<div class="card">
-    <h2>Cash Flow Summary - Detail
-      <button class="collapse-btn" id="cfToggle">Tampilkan Detail</button>
+    <h2>Cash Flow Summary - Detailed Table
+      <button class="collapse-btn" id="cfToggle">Show Details</button>
     </h2>
     <div class="scroll-x hidden" id="cf_body"></div></div>`);
   card.querySelector("#cfToggle").onclick = (e) => {
     const body = card.querySelector("#cf_body");
     body.classList.toggle("hidden");
-    e.target.textContent = body.classList.contains("hidden") ? "Tampilkan Detail" : "Sembunyikan";
+    e.target.textContent = body.classList.contains("hidden") ? "Show Details" : "Hide";
   };
   setTimeout(()=>{
     let html = `<table class="cf"><thead><tr><th>Particular</th>`;

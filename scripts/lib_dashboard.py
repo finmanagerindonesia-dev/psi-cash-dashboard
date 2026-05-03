@@ -162,19 +162,19 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
 # Drill-down helpers
 # -----------------------------------------------------------------------------
 INCOMING_LABELS_ID = {
-    "Incoming - Customers": "Penerimaan dari Customer",
-    "Incoming - Bank Loan": "Penerimaan Pinjaman Bank",
-    "Incoming - Others": "Penerimaan Lain-lain",
+    "Incoming - Customers": "Customer Receipts",
+    "Incoming - Bank Loan": "Bank Loan Drawdown",
+    "Incoming - Others": "Other Receipts",
 }
 
 OUTFLOW_BUCKETS_ID = {
-    "Outflow - CAPEX": ("CAPEX (Investasi Aset)", 1),
-    "Outflow - Indirect Expense": ("OPEX - Biaya Operasional", 2),
-    "Outflow - Direct Expense": ("OPEX - Biaya Produksi", 3),
-    "Outflow - Loan": ("Pinjaman (Bank & Antar-Perusahaan)", 4),
-    "Outflow - Finance Cost": ("Biaya Bank & Bunga", 5),
-    "Outflow - Imprest Fund": ("Imprest Fund / Kas Kecil", 6),
-    "Outflow - Cash Advance": ("Cash Advance / Uang Muka", 7),
+    "Outflow - CAPEX": ("CAPEX (Capital Expenditure)", 1),
+    "Outflow - Indirect Expense": ("OPEX - Indirect Expense", 2),
+    "Outflow - Direct Expense": ("OPEX - Direct Expense (Production)", 3),
+    "Outflow - Loan": ("Loans (Bank & Intercompany)", 4),
+    "Outflow - Finance Cost": ("Bank Charges & Interest", 5),
+    "Outflow - Imprest Fund": ("Imprest Fund / Petty Cash", 6),
+    "Outflow - Cash Advance": ("Cash Advance", 7),
     "Outflow - Bank Guarantee": ("Bank Guarantee", 8),
 }
 
