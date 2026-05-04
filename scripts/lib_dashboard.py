@@ -131,6 +131,9 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
     # ---- Bank position matrix (banks x months) ----
     bp_matrix = _build_bank_matrix(bb_agg, net_change_agg, periods)
 
+    # ---- Daily view (running balances + daily in/out) ----
+    daily = _build_daily_view(rows, periods)
+
     # ---- Period meta ----
     period_meta = []
     for p in periods:
@@ -155,7 +158,141 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
         "incoming_drill": incoming_drill,
         "outflow_drill": outflow_drill,
         "bank_position_matrix": bp_matrix,
+        "daily": daily,
     }
+
+
+def _build_daily_view(rows, periods):
+    """Build daily cash position + daily inflow/outflow data."""
+    if not periods:
+        return {"as_of": None, "dates": [], "bank_position": {},
+                "totals": [], "inout": [], "current_position": {},
+                "mtd": {}, "recent": []}
+
+    first_period = periods[0]
+
+    # 1. Opening balance per bank (sum of Beginning Balance entries
+    #    for the FIRST period - represents Jan 1 balance)
+    opening = defaultdict(float)
+    for r in rows:
+        if r["category"] == "Beginning Balance" and r["period"] == first_period:
+            opening[r["bank"]] += r["amount"]
+
+    # 2. Daily transactions per bank (excluding Beginning Balance entries)
+    by_bank_date = defaultdict(lambda: defaultdict(float))
+    for r in rows:
+        if r["category"] == "Beginning Balance":
+            continue
+        if not r.get("date"):
+            continue
+        d = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])
+        by_bank_date[r["bank"]][d] += r["amount"]
+
+    all_dates = sorted({d for bd in by_bank_date.values() for d in bd.keys()})
+    if not all_dates:
+        return {"as_of": None, "dates": [], "bank_position": {},
+                "totals": [], "inout": [], "current_position": {},
+                "mtd": {}, "recent": []}
+    as_of = all_dates[-1]
+
+    all_banks = sorted(set(by_bank_date.keys()) | set(opening.keys()))
+
+    # 3. Running balance per bank per date
+    bank_position = {}
+    for bank in all_banks:
+        running = opening.get(bank, 0.0)
+        per = {}
+        for d in all_dates:
+            running += by_bank_date[bank].get(d, 0.0)
+            per[d] = running
+        bank_position[bank] = per
+
+    # 4. Total across all banks per date
+    totals = []
+    for d in all_dates:
+        total = sum(bank_position[b].get(d, 0.0) for b in all_banks)
+        totals.append({"date": d, "total": total})
+
+    # 5. Current position (latest date) per bank
+    current_position = {b: bank_position[b][as_of] for b in all_banks}
+    current_total = sum(current_position.values())
+
+    # 6. Daily inflow / outflow
+    daily_inflow = defaultdict(float)
+    daily_outflow = defaultdict(float)
+    for r in rows:
+        if r["category"] == "Beginning Balance" or not r.get("date"):
+            continue
+        d = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])
+        if r["category"] == "Incoming":
+            daily_inflow[d] += r["amount"]
+        elif r["category"].startswith("Outflow"):
+            daily_outflow[d] += r["amount"]
+    inout = []
+    for d in all_dates:
+        inflow = daily_inflow.get(d, 0.0)
+        outflow = daily_outflow.get(d, 0.0)
+        inout.append({"date": d, "inflow": inflow, "outflow": outflow,
+                      "net": inflow + outflow})
+
+    # 7. Month-to-date for the current period (= period of as_of date)
+    cur_period = as_of[:7]  # YYYY-MM
+    mtd_inflow = sum(daily_inflow[d] for d in all_dates if d.startswith(cur_period))
+    mtd_outflow = sum(daily_outflow[d] for d in all_dates if d.startswith(cur_period))
+    mtd_opening = sum(
+        bank_position[b].get(_prev_date(all_dates, cur_period + "-01"), 0.0)
+        for b in all_banks
+    )
+    mtd = {
+        "period": cur_period,
+        "inflow": mtd_inflow,
+        "outflow": mtd_outflow,
+        "net": mtd_inflow + mtd_outflow,
+        "opening": mtd_opening,
+        "ending": current_total,
+    }
+
+    # 8. Recent transactions (last 20 by date desc)
+    recent = []
+    sorted_rows = [r for r in rows
+                   if r["category"] != "Beginning Balance" and r.get("date")]
+    sorted_rows.sort(key=lambda r: (r["date"], r["amount"]))
+    sorted_rows.reverse()  # most recent first
+    for r in sorted_rows[:30]:
+        recent.append({
+            "date": r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"]),
+            "bank": r["bank"],
+            "unit": r["unit"],
+            "category": r["sub_category"] or r["category"],
+            "detail": r["detail_category"],
+            "party": r["parties"],
+            "amount": r["amount"],
+        })
+
+    return {
+        "as_of": as_of,
+        "dates": all_dates,
+        "banks": all_banks,
+        "bank_position": bank_position,
+        "totals": totals,
+        "inout": inout,
+        "current_position": current_position,
+        "current_total": current_total,
+        "mtd": mtd,
+        "recent": recent,
+    }
+
+
+def _prev_date(all_dates, target):
+    """Return the largest date in all_dates strictly less than `target`,
+    or None if there is no earlier date."""
+    prev = None
+    for d in all_dates:
+        if d < target:
+            prev = d
+        else:
+            break
+    return prev
 
 
 # -----------------------------------------------------------------------------

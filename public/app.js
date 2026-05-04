@@ -8,7 +8,14 @@ const FORMATS = {
 let CUR = localStorage.getItem("psi_cur") || "IDR";
 let DATA = null;
 let SELECTED_PERIOD = null;
+let TAB = localStorage.getItem("psi_tab") || "monthly";
 let CHARTS = {};
+
+function fmtDate(d){
+  if(!d) return "-";
+  const dt = new Date(d + "T00:00:00");
+  return dt.toLocaleDateString("en-US", {day:"numeric", month:"short", year:"numeric"});
+}
 
 function fmt(n, cur){
   if(n===null||n===undefined||isNaN(n)) return "-";
@@ -147,11 +154,192 @@ function populatePeriodSelect(){
 function render(){
   const r = document.getElementById("root");
   r.innerHTML = "";
-  r.appendChild(renderKPIs());
-  r.appendChild(renderRow2());
-  r.appendChild(renderBankMatrix());
-  r.appendChild(renderTrend());
-  r.appendChild(renderCFSummary());
+  // Update as-of banner (always visible)
+  const asof = DATA.daily && DATA.daily.as_of;
+  document.getElementById("asOfBanner").innerHTML =
+    asof ? `Data as of: <b>${fmtDate(asof)}</b>` : "";
+  // Update tab buttons
+  document.querySelectorAll(".tab").forEach(t =>
+    t.classList.toggle("active", t.dataset.tab === TAB));
+  // Render the active tab
+  if(TAB === "daily") {
+    r.appendChild(renderDailyKPIs());
+    r.appendChild(renderDailyPositionChart());
+    r.appendChild(renderDailyInOutChart());
+    r.appendChild(renderCurrentBankPosition());
+    r.appendChild(renderRecentTx());
+  } else {
+    r.appendChild(renderKPIs());
+    r.appendChild(renderRow2());
+    r.appendChild(renderBankMatrix());
+    r.appendChild(renderTrend());
+    r.appendChild(renderCFSummary());
+  }
+}
+
+// =============================================================================
+// DAILY VIEW
+// =============================================================================
+function renderDailyKPIs(){
+  const D = DATA.daily;
+  if(!D || !D.as_of){
+    return el(`<div class="card"><div class="empty">No daily data available.</div></div>`);
+  }
+  const div = el(`<div class="kpi-row"></div>`);
+  const monthName = new Date(D.as_of + "T00:00:00").toLocaleDateString("en-US",{month:"long"});
+  div.appendChild(el(`<div class="kpi pos">
+    <div class="lbl">Cash Position - As of ${fmtDate(D.as_of)}</div>
+    <div class="val">${fmtBig(D.current_total)}</div>
+    <div class="sub">Across all bank accounts (real-time)</div></div>`));
+  div.appendChild(el(`<div class="kpi pos">
+    <div class="lbl">${monthName} - Inflow MTD</div>
+    <div class="val">${fmtBig(D.mtd.inflow)}</div>
+    <div class="sub">Month-to-date receipts</div></div>`));
+  div.appendChild(el(`<div class="kpi neg">
+    <div class="lbl">${monthName} - Outflow MTD</div>
+    <div class="val">${fmtBig(D.mtd.outflow)}</div>
+    <div class="sub">Month-to-date payments</div></div>`));
+  const netCls = D.mtd.net >= 0 ? "pos" : "neg";
+  div.appendChild(el(`<div class="kpi ${netCls}">
+    <div class="lbl">${monthName} - Net MTD</div>
+    <div class="val">${fmtBig(D.mtd.net)}</div>
+    <div class="sub">${D.mtd.net >= 0 ? "Surplus this month so far" : "Deficit this month so far"}</div></div>`));
+  return div;
+}
+
+function renderDailyPositionChart(){
+  const D = DATA.daily;
+  const card = el(`<div class="card">
+    <h2>Daily Cash Position Trend</h2>
+    <div class="body"><div class="chart-wrap tall"><canvas id="ch_dailypos"></canvas></div></div></div>`);
+  setTimeout(()=>{
+    if(CHARTS.dailypos) CHARTS.dailypos.destroy();
+    const labels = D.totals.map(t=>t.date);
+    const div = FORMATS[CUR].div;
+    const data = D.totals.map(t => t.total / div);
+    CHARTS.dailypos = new Chart(document.getElementById("ch_dailypos"), {
+      type: "line",
+      data: {labels, datasets:[{
+        label:"Cash Position", data,
+        borderColor:"#1f3864", backgroundColor:"#1f386422",
+        borderWidth:2.5, tension:.2, pointRadius:2, pointHoverRadius:5,
+        fill: true,
+      }]},
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{
+            title:(ctx)=>fmtDate(ctx[0].label),
+            label:(c)=>` ${FORMATS[CUR].label} ${c.parsed.y.toLocaleString("en-US",{maximumFractionDigits:0})}`
+          }}
+        },
+        scales:{
+          x:{ticks:{maxTicksLimit:12, callback:function(v){
+            const d = this.getLabelForValue(v);
+            const dt = new Date(d + "T00:00:00");
+            return dt.toLocaleDateString("en-US",{day:"numeric",month:"short"});
+          }}},
+          y:{ticks:{callback:(v)=>fmtCompact(v*div)}}
+        }
+      }
+    });
+  },10);
+  return card;
+}
+
+function renderDailyInOutChart(){
+  const D = DATA.daily;
+  // Filter to only days with activity, last 60
+  const active = D.inout.filter(io => io.inflow !== 0 || io.outflow !== 0).slice(-60);
+  const card = el(`<div class="card">
+    <h2>Daily Cash In / Out (last ${active.length} active days)</h2>
+    <div class="legend-mini">
+      <span><i style="background:#0a8754"></i>Inflow</span>
+      <span><i style="background:#c0392b"></i>Outflow</span>
+      <span><i style="background:#1f3864"></i>Net</span>
+    </div>
+    <div class="body"><div class="chart-wrap tall"><canvas id="ch_dailyio"></canvas></div></div></div>`);
+  setTimeout(()=>{
+    if(CHARTS.dailyio) CHARTS.dailyio.destroy();
+    const labels = active.map(io=>io.date);
+    const div = FORMATS[CUR].div;
+    CHARTS.dailyio = new Chart(document.getElementById("ch_dailyio"), {
+      type: "bar",
+      data: {labels, datasets:[
+        {label:"Inflow", data:active.map(io=>io.inflow/div),
+         backgroundColor:"#0a8754cc", borderColor:"#0a8754", borderWidth:1, order:2},
+        {label:"Outflow", data:active.map(io=>io.outflow/div),
+         backgroundColor:"#c0392bcc", borderColor:"#c0392b", borderWidth:1, order:2},
+        {label:"Net", type:"line", data:active.map(io=>io.net/div),
+         borderColor:"#1f3864", borderWidth:2, tension:.15, pointRadius:3, order:1},
+      ]},
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{
+            title:(ctx)=>fmtDate(ctx[0].label),
+            label:(c)=>` ${c.dataset.label}: ${FORMATS[CUR].label} ${c.parsed.y.toLocaleString("en-US",{maximumFractionDigits:0})}`
+          }}
+        },
+        scales:{
+          x:{ticks:{maxTicksLimit:15, callback:function(v){
+            const d = this.getLabelForValue(v);
+            const dt = new Date(d + "T00:00:00");
+            return dt.toLocaleDateString("en-US",{day:"numeric",month:"short"});
+          }}},
+          y:{ticks:{callback:(v)=>fmtCompact(v*div)}}
+        }
+      }
+    });
+  },10);
+  return card;
+}
+
+function renderCurrentBankPosition(){
+  const D = DATA.daily;
+  const card = el(`<div class="card">
+    <h2>Bank Position - As of ${fmtDate(D.as_of)}</h2>
+    <div class="body" id="cbpBody"></div></div>`);
+  // Build a small grid of bank cards
+  const total = D.current_total || 1;
+  const cards = D.banks.map(b => {
+    const v = D.current_position[b];
+    const pct = total ? (Math.abs(v) / Math.abs(total) * 100) : 0;
+    return `<div class="bank-card">
+      <div class="b">${escapeHtml(b)}</div>
+      <div class="v">${fmtBig(v)}</div>
+      <div class="d muted">${pct.toFixed(1)}% of total</div>
+    </div>`;
+  }).join("");
+  card.querySelector("#cbpBody").innerHTML = `
+    <div class="bank-grid">${cards}</div>
+    <div style="margin-top:14px;padding:12px 16px;background:#fff8e1;border-radius:9px;font-weight:700;display:flex;justify-content:space-between">
+      <span>TOTAL CASH POSITION</span><span>${fmtBig(D.current_total)}</span>
+    </div>`;
+  return card;
+}
+
+function renderRecentTx(){
+  const D = DATA.daily;
+  const rows = (D.recent || []).map(t => {
+    const cls = t.amount > 0 ? "pos" : "neg";
+    return `<tr>
+      <td>${fmtDate(t.date)}</td>
+      <td>${escapeHtml(t.bank)}</td>
+      <td>${escapeHtml(t.category || "-")}</td>
+      <td>${escapeHtml(t.detail || "-")}</td>
+      <td class="party-cell" title="${escapeHtml(t.party || "")}">${escapeHtml(t.party || "-")}</td>
+      <td class="amt ${cls}">${fmtBig(t.amount)}</td>
+    </tr>`;
+  }).join("");
+  return el(`<div class="card">
+    <h2>Recent Transactions <span class="pill">Latest ${(D.recent || []).length}</span></h2>
+    <div class="scroll-x"><table class="tx">
+      <thead><tr><th>Date</th><th>Bank</th><th>Category</th><th>Detail</th><th>Party</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6" class="empty">No transactions.</td></tr>'}</tbody>
+    </table></div></div>`);
 }
 
 // ----- KPIs -----
@@ -427,4 +615,11 @@ document.getElementById("curgrp").addEventListener("click", (e)=>{
 });
 document.querySelectorAll("#curgrp button").forEach(x=>x.classList.toggle("active", x.dataset.cur===CUR));
 document.getElementById("logoutBtn").addEventListener("click", logout);
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    TAB = btn.dataset.tab;
+    localStorage.setItem("psi_tab", TAB);
+    if(DATA) render();
+  });
+});
 load();
