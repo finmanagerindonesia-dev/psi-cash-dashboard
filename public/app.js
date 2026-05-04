@@ -16,7 +16,6 @@ function fmtDate(d){
   const dt = new Date(d + "T00:00:00");
   return dt.toLocaleDateString("en-US", {day:"numeric", month:"short", year:"numeric"});
 }
-
 function fmt(n, cur){
   if(n===null||n===undefined||isNaN(n)) return "-";
   const f = FORMATS[cur||CUR];
@@ -51,33 +50,23 @@ function el(html){
 // ----- Encryption (matches Python lib_crypto.py) -----
 async function decryptPayload(enc, password){
   const b64 = (s) => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
-  const baseKey = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(password),
-    {name:"PBKDF2"}, false, ["deriveKey"]
-  );
+  const baseKey = await crypto.subtle.importKey("raw",
+    new TextEncoder().encode(password), {name:"PBKDF2"}, false, ["deriveKey"]);
   const key = await crypto.subtle.deriveKey(
     {name:"PBKDF2", salt: b64(enc.salt), iterations: enc.iter, hash:"SHA-256"},
-    baseKey,
-    {name:"AES-GCM", length: 256},
-    false, ["decrypt"]
-  );
+    baseKey, {name:"AES-GCM", length: 256}, false, ["decrypt"]);
   const plain = await crypto.subtle.decrypt(
-    {name:"AES-GCM", iv: b64(enc.iv)}, key, b64(enc.ct)
-  );
+    {name:"AES-GCM", iv: b64(enc.iv)}, key, b64(enc.ct));
   return JSON.parse(new TextDecoder().decode(plain));
 }
-
 async function tryDecryptAndApply(enc, password){
   try {
     const data = await decryptPayload(enc, password);
     window._PSI_ENCRYPTED = true;
     sessionStorage.setItem("psi_pw", password);
-    hidePwGate();
-    applyData(data);
-    return true;
+    hidePwGate(); applyData(data); return true;
   } catch(e){ return false; }
 }
-
 function showPwGate(enc){
   const gate = document.getElementById("pwGate");
   gate.classList.remove("hidden");
@@ -154,20 +143,17 @@ function populatePeriodSelect(){
 function render(){
   const r = document.getElementById("root");
   r.innerHTML = "";
-  // Update as-of banner (always visible)
   const asof = DATA.daily && DATA.daily.as_of;
   document.getElementById("asOfBanner").innerHTML =
     asof ? `Data as of: <b>${fmtDate(asof)}</b>` : "";
-  // Update tab buttons
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.tab === TAB));
-  // Render the active tab
   if(TAB === "daily") {
     r.appendChild(renderDailyKPIs());
+    r.appendChild(renderDailyBankTable());
+    r.appendChild(renderRecentTx());
     r.appendChild(renderDailyPositionChart());
     r.appendChild(renderDailyInOutChart());
-    r.appendChild(renderCurrentBankPosition());
-    r.appendChild(renderRecentTx());
   } else {
     r.appendChild(renderKPIs());
     r.appendChild(renderRow2());
@@ -207,6 +193,42 @@ function renderDailyKPIs(){
   return div;
 }
 
+function renderDailyBankTable(){
+  const D = DATA.daily;
+  const showDates = D.dates.slice(-30).reverse();
+  const banks = D.banks;
+  let headerCells = banks.map(b => `<th>${escapeHtml(b)}</th>`).join("");
+  let rows = showDates.map((d, idx) => {
+    let total = 0;
+    let cells = banks.map(b => {
+      const v = D.bank_position[b][d] || 0;
+      total += v;
+      return `<td>${fmtBig(v)}</td>`;
+    }).join("");
+    const isLatest = (idx === 0);
+    const cls = isLatest ? "row-latest" : "";
+    return `<tr class="${cls}">
+      <td class="date-cell">${fmtDate(d)}${isLatest ? ' <span class="latest-tag">Latest</span>' : ''}</td>
+      ${cells}
+      <td class="total-cell">${fmtBig(total)}</td>
+    </tr>`;
+  }).join("");
+  return el(`<div class="card">
+    <h2>Bank Position - Daily Ledger
+      <span class="pill">Last ${showDates.length} active days</span>
+    </h2>
+    <div class="scroll-x">
+      <table class="ledger">
+        <thead><tr>
+          <th>Date</th>
+          ${headerCells}
+          <th>Total</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div></div>`);
+}
+
 function renderDailyPositionChart(){
   const D = DATA.daily;
   const card = el(`<div class="card">
@@ -222,8 +244,7 @@ function renderDailyPositionChart(){
       data: {labels, datasets:[{
         label:"Cash Position", data,
         borderColor:"#1f3864", backgroundColor:"#1f386422",
-        borderWidth:2.5, tension:.2, pointRadius:2, pointHoverRadius:5,
-        fill: true,
+        borderWidth:2.5, tension:.2, pointRadius:2, pointHoverRadius:5, fill: true,
       }]},
       options: {
         responsive:true, maintainAspectRatio:false,
@@ -250,7 +271,6 @@ function renderDailyPositionChart(){
 
 function renderDailyInOutChart(){
   const D = DATA.daily;
-  // Filter to only days with activity, last 60
   const active = D.inout.filter(io => io.inflow !== 0 || io.outflow !== 0).slice(-60);
   const card = el(`<div class="card">
     <h2>Daily Cash In / Out (last ${active.length} active days)</h2>
@@ -297,30 +317,6 @@ function renderDailyInOutChart(){
   return card;
 }
 
-function renderCurrentBankPosition(){
-  const D = DATA.daily;
-  const card = el(`<div class="card">
-    <h2>Bank Position - As of ${fmtDate(D.as_of)}</h2>
-    <div class="body" id="cbpBody"></div></div>`);
-  // Build a small grid of bank cards
-  const total = D.current_total || 1;
-  const cards = D.banks.map(b => {
-    const v = D.current_position[b];
-    const pct = total ? (Math.abs(v) / Math.abs(total) * 100) : 0;
-    return `<div class="bank-card">
-      <div class="b">${escapeHtml(b)}</div>
-      <div class="v">${fmtBig(v)}</div>
-      <div class="d muted">${pct.toFixed(1)}% of total</div>
-    </div>`;
-  }).join("");
-  card.querySelector("#cbpBody").innerHTML = `
-    <div class="bank-grid">${cards}</div>
-    <div style="margin-top:14px;padding:12px 16px;background:#fff8e1;border-radius:9px;font-weight:700;display:flex;justify-content:space-between">
-      <span>TOTAL CASH POSITION</span><span>${fmtBig(D.current_total)}</span>
-    </div>`;
-  return card;
-}
-
 function renderRecentTx(){
   const D = DATA.daily;
   const rows = (D.recent || []).map(t => {
@@ -342,7 +338,9 @@ function renderRecentTx(){
     </table></div></div>`);
 }
 
-// ----- KPIs -----
+// =============================================================================
+// MONTHLY VIEW
+// =============================================================================
 function renderKPIs(){
   const D = DATA;
   const idx = D.periods.findIndex(p=>p.key===SELECTED_PERIOD);
@@ -487,7 +485,6 @@ function toggleSub(s){ s.classList.toggle("open"); }
 window.toggleFGroup = toggleFGroup;
 window.toggleSub = toggleSub;
 
-// ----- Bank Position Matrix -----
 function renderBankMatrix(){
   const D = DATA;
   const m = D.bank_position_matrix;

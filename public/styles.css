@@ -180,6 +180,29 @@ nav.tabs .container{display:flex;align-items:center;gap:6px;padding:0 28px}
 .tab-asof{margin-left:auto;font-size:12.5px;color:var(--muted);font-style:italic}
 .tab-asof b{color:var(--brand);font-style:normal;font-weight:700}
 
+/* Daily ledger table (date rows x bank cols) */
+table.ledger{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+table.ledger th,table.ledger td{padding:8px 12px;border-bottom:1px solid var(--line);
+  white-space:nowrap}
+table.ledger thead th{background:#fafbfd;color:var(--brand);font-weight:700;
+  font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+  position:sticky;top:0;z-index:1;border-bottom:2px solid var(--line)}
+table.ledger thead th:first-child,table.ledger tbody td:first-child{
+  text-align:left;position:sticky;left:0;background:inherit;z-index:0;font-weight:600}
+table.ledger thead th:not(:first-child),table.ledger tbody td:not(:first-child){
+  text-align:right;font-variant-numeric:tabular-nums}
+table.ledger tbody tr:nth-child(even) td{background:#fafbfd}
+table.ledger tbody tr:nth-child(even) td:first-child{background:#fafbfd}
+table.ledger tbody tr:hover td{background:#f0f3f9}
+table.ledger tbody tr:hover td:first-child{background:#f0f3f9}
+table.ledger tr.row-latest td{background:#fff8e1!important;font-weight:700;
+  border-top:2px solid #d4a017;border-bottom:2px solid #d4a017}
+table.ledger .total-cell{font-weight:700;background:#eef3f9!important;color:var(--brand)}
+table.ledger tr.row-latest .total-cell{background:#ffecb3!important;color:#7c5e00}
+table.ledger .date-cell{color:var(--brand)}
+table.ledger .latest-tag{background:var(--brand);color:#fff;font-size:9.5px;padding:1px 6px;
+  border-radius:8px;margin-left:6px;letter-spacing:.3px;text-transform:uppercase;font-weight:700}
+
 /* Daily view tx table */
 table.tx{width:100%;border-collapse:collapse;font-size:12.5px}
 table.tx th,table.tx td{padding:8px 10px;border-bottom:1px solid var(--line)}
