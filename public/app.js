@@ -151,7 +151,7 @@ function render(){
   if(TAB === "daily") {
     r.appendChild(renderDailyKPIs());
     r.appendChild(renderDailyBankTable());
-    r.appendChild(renderRecentTx());
+    r.appendChild(renderWeeklyView());
     r.appendChild(renderDailyPositionChart());
     r.appendChild(renderDailyInOutChart());
   } else {
@@ -195,7 +195,7 @@ function renderDailyKPIs(){
 
 function renderDailyBankTable(){
   const D = DATA.daily;
-  const showDates = D.dates.slice(-30).reverse();
+  const showDates = D.dates.slice(-7).reverse();
   const banks = D.banks;
   let headerCells = banks.map(b => `<th>${escapeHtml(b)}</th>`).join("");
   let rows = showDates.map((d, idx) => {
@@ -317,25 +317,73 @@ function renderDailyInOutChart(){
   return card;
 }
 
-function renderRecentTx(){
+function renderWeeklyView(){
   const D = DATA.daily;
-  const rows = (D.recent || []).map(t => {
-    const cls = t.amount > 0 ? "pos" : "neg";
-    return `<tr>
-      <td>${fmtDate(t.date)}</td>
-      <td>${escapeHtml(t.bank)}</td>
-      <td>${escapeHtml(t.category || "-")}</td>
-      <td>${escapeHtml(t.detail || "-")}</td>
-      <td class="party-cell" title="${escapeHtml(t.party || "")}">${escapeHtml(t.party || "-")}</td>
-      <td class="amt ${cls}">${fmtBig(t.amount)}</td>
-    </tr>`;
+  const W = D && D.weekly;
+  if(!W || !W.weeks || !W.weeks.length){
+    return el(`<div class="card">
+      <h2>Weekly Activity</h2>
+      <div class="empty">No transactions in the current month.</div></div>`);
+  }
+  const weekItems = W.weeks.map((w, wi) => {
+    const isCurrent = (D.as_of >= w.start && D.as_of <= w.end);
+    // Per-week category breakdown (level 2)
+    const cats = w.by_category.map((c, ci) => {
+      // Per-category transactions (level 3)
+      const txRows = c.transactions.map(t => {
+        const cls = t.amount > 0 ? "pos" : "neg";
+        return `<tr>
+          <td>${fmtDate(t.date)}</td>
+          <td>${escapeHtml(t.bank || "-")}</td>
+          <td>${escapeHtml(t.detail || "-")}</td>
+          <td class="party-cell" title="${escapeHtml(t.party || "")}">${escapeHtml(t.party || "-")}</td>
+          <td class="amt ${cls}">${fmtBig(t.amount)}</td>
+        </tr>`;
+      }).join("");
+      const kindCls = c.kind === "inflow" ? "pos" : "neg";
+      return `
+      <div class="subgroup">
+        <div class="shead" onclick="toggleSub(this.parentElement)">
+          <span class="arrow">&#9656;</span>
+          <span class="sname">${escapeHtml(c.label)}<span class="scount">(${c.tx_count} tx)</span></span>
+          <span class="samt amount ${kindCls}">${fmtBig(c.amount)}</span>
+        </div>
+        <div class="parties">
+          <div class="scroll-x"><table class="tx">
+            <thead><tr><th>Date</th><th>Bank</th><th>Detail</th><th>Party</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>${txRows || '<tr><td colspan="5" class="empty">No transactions.</td></tr>'}</tbody>
+          </table></div>
+        </div>
+      </div>`;
+    }).join("");
+
+    const netCls = w.net >= 0 ? "pos" : "neg";
+    const tag = isCurrent ? '<span class="latest-tag">Current</span>' : '';
+    return `
+    <div class="fgroup ${isCurrent ? 'open' : ''}" data-wi="${wi}">
+      <div class="fhead" onclick="toggleFGroup(this.parentElement)">
+        <div class="arrow">&#9656;</div>
+        <div class="fname">${escapeHtml(w.label)} <span class="muted" style="font-weight:400">${escapeHtml(w.date_range)}</span> ${tag}
+          <span class="muted" style="font-weight:500;font-size:11.5px">- ${w.tx_count} transactions</span>
+        </div>
+        <div class="weekly-summary">
+          <span class="amount pos" title="Inflow">+${fmtBig(w.inflow)}</span>
+          <span class="amount neg" title="Outflow">${fmtBig(w.outflow)}</span>
+          <span class="amount ${netCls}" title="Net" style="font-weight:700;border-left:2px solid var(--line);padding-left:10px">Net ${fmtBig(w.net)}</span>
+        </div>
+      </div>
+      <div class="fbody">${cats || '<div class="muted">No categorized transactions.</div>'}</div>
+    </div>`;
   }).join("");
+
   return el(`<div class="card">
-    <h2>Recent Transactions <span class="pill">Latest ${(D.recent || []).length}</span></h2>
-    <div class="scroll-x"><table class="tx">
-      <thead><tr><th>Date</th><th>Bank</th><th>Category</th><th>Detail</th><th>Party</th><th style="text-align:right">Amount</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="6" class="empty">No transactions.</td></tr>'}</tbody>
-    </table></div></div>`);
+    <h2>Weekly Activity <span class="pill">${escapeHtml(W.month_label)}</span></h2>
+    <div class="body">
+      <div class="muted" style="margin-bottom:10px;font-size:12px">
+        Click any week to expand and see transactions grouped by category. Click a category for detail.
+      </div>
+      <div class="flow">${weekItems}</div>
+    </div></div>`);
 }
 
 // =============================================================================
