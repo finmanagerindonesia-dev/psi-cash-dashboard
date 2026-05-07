@@ -47,6 +47,37 @@ function el(html){
   return t.content.firstChild;
 }
 
+// Bank-aware formatter: for USD tab, use native USD if provided.
+function fmtBankAmt(idrAmt, nativeUsdAmt){
+  if(CUR === "USD" && nativeUsdAmt !== null && nativeUsdAmt !== undefined){
+    if(Math.abs(nativeUsdAmt) < 0.005) return "US$ -";
+    const s = nativeUsdAmt.toLocaleString("en-US",{maximumFractionDigits:0,minimumFractionDigits:0});
+    return "US$ " + (nativeUsdAmt < 0 ? `(${s.replace("-","")})` : s);
+  }
+  return fmtBig(idrAmt);
+}
+function fmtTotalCash(idrTotal, usdTotal){
+  if(CUR === "USD" && usdTotal !== null && usdTotal !== undefined){
+    if(Math.abs(usdTotal) < 0.005) return "US$ -";
+    const s = usdTotal.toLocaleString("en-US",{maximumFractionDigits:0,minimumFractionDigits:0});
+    return "US$ " + (usdTotal < 0 ? `(${s.replace("-","")})` : s);
+  }
+  return fmtBig(idrTotal);
+}
+function computeTotalCashByCurrency(bankIdrMap, bankUsdMap){
+  if(CUR === "IDR") return Object.values(bankIdrMap).reduce((a,v)=>a+v, 0);
+  if(CUR === "INR") return Object.values(bankIdrMap).reduce((a,v)=>a+v, 0) / 189;
+  let total = 0;
+  for(const bank in bankIdrMap){
+    if(bankUsdMap && bankUsdMap[bank] !== undefined && bankUsdMap[bank] !== null){
+      total += bankUsdMap[bank];
+    } else {
+      total += bankIdrMap[bank] / 17000;
+    }
+  }
+  return total;
+}
+
 // ----- Encryption (matches Python lib_crypto.py) -----
 async function decryptPayload(enc, password){
   const b64 = (s) => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
@@ -173,9 +204,13 @@ function renderDailyKPIs(){
   }
   const div = el(`<div class="kpi-row"></div>`);
   const monthName = new Date(D.as_of + "T00:00:00").toLocaleDateString("en-US",{month:"long"});
+  const totalCashCur = computeTotalCashByCurrency(D.current_position, D.current_position_usd);
+  const totalCashStr = (CUR === "USD")
+    ? fmtTotalCash(D.current_total, totalCashCur)
+    : fmtBig(D.current_total);
   div.appendChild(el(`<div class="kpi pos">
     <div class="lbl">Cash Position - As of ${fmtDate(D.as_of)}</div>
-    <div class="val">${fmtBig(D.current_total)}</div>
+    <div class="val">${totalCashStr}</div>
     <div class="sub">Across all bank accounts (real-time)</div></div>`));
   div.appendChild(el(`<div class="kpi pos">
     <div class="lbl">${monthName} - Inflow MTD</div>
@@ -197,20 +232,33 @@ function renderDailyBankTable(){
   const D = DATA.daily;
   const showDates = D.dates.slice(-7).reverse();
   const banks = D.banks;
-  let headerCells = banks.map(b => `<th>${escapeHtml(b)}</th>`).join("");
+  const usdMap = D.bank_position_usd || {};
+  let headerCells = banks.map(b => {
+    const cur = (DATA.bank_currencies && DATA.bank_currencies[b]) || "IDR";
+    const tag = cur === "USD" ? ' <span class="muted" style="font-size:10px;font-weight:400">(USD)</span>' : "";
+    return `<th>${escapeHtml(b)}${tag}</th>`;
+  }).join("");
   let rows = showDates.map((d, idx) => {
     let total = 0;
+    let totalUsd = 0;
+    let totalUsdValid = (CUR === "USD");
     let cells = banks.map(b => {
-      const v = D.bank_position[b][d] || 0;
-      total += v;
-      return `<td>${fmtBig(v)}</td>`;
+      const idrV = D.bank_position[b][d] || 0;
+      const usdV = (usdMap[b] && usdMap[b][d] !== undefined) ? usdMap[b][d] : null;
+      total += idrV;
+      if(totalUsdValid){
+        if(usdV !== null) totalUsd += usdV;
+        else totalUsd += idrV / 17000;
+      }
+      return `<td>${fmtBankAmt(idrV, usdV)}</td>`;
     }).join("");
     const isLatest = (idx === 0);
     const cls = isLatest ? "row-latest" : "";
+    const totalDisplay = (CUR === "USD") ? fmtTotalCash(total, totalUsd) : fmtBig(total);
     return `<tr class="${cls}">
       <td class="date-cell">${fmtDate(d)}${isLatest ? ' <span class="latest-tag">Latest</span>' : ''}</td>
       ${cells}
-      <td class="total-cell">${fmtBig(total)}</td>
+      <td class="total-cell">${totalDisplay}</td>
     </tr>`;
   }).join("");
   return el(`<div class="card">
@@ -229,6 +277,72 @@ function renderDailyBankTable(){
     </div></div>`);
 }
 
+function renderWeeklyView(){
+  const D = DATA.daily;
+  const W = D && D.weekly;
+  if(!W || !W.weeks || !W.weeks.length){
+    return el(`<div class="card">
+      <h2>Weekly Activity</h2>
+      <div class="empty">No transactions in the current month.</div></div>`);
+  }
+  const weekItems = W.weeks.map((w, wi) => {
+    const isCurrent = (D.as_of >= w.start && D.as_of <= w.end);
+    const cats = w.by_category.map((c, ci) => {
+      const txRows = c.transactions.map(t => {
+        const cls = t.amount > 0 ? "pos" : "neg";
+        return `<tr>
+          <td>${fmtDate(t.date)}</td>
+          <td>${escapeHtml(t.bank || "-")}</td>
+          <td>${escapeHtml(t.detail || "-")}</td>
+          <td class="party-cell" title="${escapeHtml(t.party || "")}">${escapeHtml(t.party || "-")}</td>
+          <td class="amt ${cls}">${fmtBig(t.amount)}</td>
+        </tr>`;
+      }).join("");
+      const kindCls = c.kind === "inflow" ? "pos" : "neg";
+      return `
+      <div class="subgroup">
+        <div class="shead" onclick="toggleSub(this.parentElement)">
+          <span class="arrow">&#9656;</span>
+          <span class="sname">${escapeHtml(c.label)}<span class="scount">(${c.tx_count} tx)</span></span>
+          <span class="samt amount ${kindCls}">${fmtBig(c.amount)}</span>
+        </div>
+        <div class="parties">
+          <div class="scroll-x"><table class="tx">
+            <thead><tr><th>Date</th><th>Bank</th><th>Detail</th><th>Party</th><th style="text-align:right">Amount</th></tr></thead>
+            <tbody>${txRows || '<tr><td colspan="5" class="empty">No transactions.</td></tr>'}</tbody>
+          </table></div>
+        </div>
+      </div>`;
+    }).join("");
+    const netCls = w.net >= 0 ? "pos" : "neg";
+    const tag = isCurrent ? '<span class="latest-tag">Current</span>' : '';
+    return `
+    <div class="fgroup ${isCurrent ? 'open' : ''}" data-wi="${wi}">
+      <div class="fhead" onclick="toggleFGroup(this.parentElement)">
+        <div class="arrow">&#9656;</div>
+        <div class="fname">${escapeHtml(w.label)} <span class="muted" style="font-weight:400">${escapeHtml(w.date_range)}</span> ${tag}
+          <span class="muted" style="font-weight:500;font-size:11.5px">- ${w.tx_count} transactions</span>
+        </div>
+        <div class="weekly-summary">
+          <span class="amount pos" title="Inflow">+${fmtBig(w.inflow)}</span>
+          <span class="amount neg" title="Outflow">${fmtBig(w.outflow)}</span>
+          <span class="amount ${netCls}" title="Net" style="font-weight:700;border-left:2px solid var(--line);padding-left:10px">Net ${fmtBig(w.net)}</span>
+        </div>
+      </div>
+      <div class="fbody">${cats || '<div class="muted">No categorized transactions.</div>'}</div>
+    </div>`;
+  }).join("");
+
+  return el(`<div class="card">
+    <h2>Weekly Activity <span class="pill">${escapeHtml(W.month_label)}</span></h2>
+    <div class="body">
+      <div class="muted" style="margin-bottom:10px;font-size:12px">
+        Click any week to expand and see transactions grouped by category. Click a category for detail.
+      </div>
+      <div class="flow">${weekItems}</div>
+    </div></div>`);
+}
+
 function renderDailyPositionChart(){
   const D = DATA.daily;
   const card = el(`<div class="card">
@@ -241,20 +355,16 @@ function renderDailyPositionChart(){
     const data = D.totals.map(t => t.total / div);
     CHARTS.dailypos = new Chart(document.getElementById("ch_dailypos"), {
       type: "line",
-      data: {labels, datasets:[{
-        label:"Cash Position", data,
+      data: {labels, datasets:[{label:"Cash Position", data,
         borderColor:"#1f3864", backgroundColor:"#1f386422",
-        borderWidth:2.5, tension:.2, pointRadius:2, pointHoverRadius:5, fill: true,
-      }]},
+        borderWidth:2.5, tension:.2, pointRadius:2, pointHoverRadius:5, fill:true}]},
       options: {
         responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{display:false},
+        plugins:{legend:{display:false},
           tooltip:{callbacks:{
             title:(ctx)=>fmtDate(ctx[0].label),
             label:(c)=>` ${FORMATS[CUR].label} ${c.parsed.y.toLocaleString("en-US",{maximumFractionDigits:0})}`
-          }}
-        },
+          }}},
         scales:{
           x:{ticks:{maxTicksLimit:12, callback:function(v){
             const d = this.getLabelForValue(v);
@@ -296,13 +406,11 @@ function renderDailyInOutChart(){
       ]},
       options: {
         responsive:true, maintainAspectRatio:false,
-        plugins:{
-          legend:{display:false},
+        plugins:{legend:{display:false},
           tooltip:{callbacks:{
             title:(ctx)=>fmtDate(ctx[0].label),
             label:(c)=>` ${c.dataset.label}: ${FORMATS[CUR].label} ${c.parsed.y.toLocaleString("en-US",{maximumFractionDigits:0})}`
-          }}
-        },
+          }}},
         scales:{
           x:{ticks:{maxTicksLimit:15, callback:function(v){
             const d = this.getLabelForValue(v);
@@ -315,75 +423,6 @@ function renderDailyInOutChart(){
     });
   },10);
   return card;
-}
-
-function renderWeeklyView(){
-  const D = DATA.daily;
-  const W = D && D.weekly;
-  if(!W || !W.weeks || !W.weeks.length){
-    return el(`<div class="card">
-      <h2>Weekly Activity</h2>
-      <div class="empty">No transactions in the current month.</div></div>`);
-  }
-  const weekItems = W.weeks.map((w, wi) => {
-    const isCurrent = (D.as_of >= w.start && D.as_of <= w.end);
-    // Per-week category breakdown (level 2)
-    const cats = w.by_category.map((c, ci) => {
-      // Per-category transactions (level 3)
-      const txRows = c.transactions.map(t => {
-        const cls = t.amount > 0 ? "pos" : "neg";
-        return `<tr>
-          <td>${fmtDate(t.date)}</td>
-          <td>${escapeHtml(t.bank || "-")}</td>
-          <td>${escapeHtml(t.detail || "-")}</td>
-          <td class="party-cell" title="${escapeHtml(t.party || "")}">${escapeHtml(t.party || "-")}</td>
-          <td class="amt ${cls}">${fmtBig(t.amount)}</td>
-        </tr>`;
-      }).join("");
-      const kindCls = c.kind === "inflow" ? "pos" : "neg";
-      return `
-      <div class="subgroup">
-        <div class="shead" onclick="toggleSub(this.parentElement)">
-          <span class="arrow">&#9656;</span>
-          <span class="sname">${escapeHtml(c.label)}<span class="scount">(${c.tx_count} tx)</span></span>
-          <span class="samt amount ${kindCls}">${fmtBig(c.amount)}</span>
-        </div>
-        <div class="parties">
-          <div class="scroll-x"><table class="tx">
-            <thead><tr><th>Date</th><th>Bank</th><th>Detail</th><th>Party</th><th style="text-align:right">Amount</th></tr></thead>
-            <tbody>${txRows || '<tr><td colspan="5" class="empty">No transactions.</td></tr>'}</tbody>
-          </table></div>
-        </div>
-      </div>`;
-    }).join("");
-
-    const netCls = w.net >= 0 ? "pos" : "neg";
-    const tag = isCurrent ? '<span class="latest-tag">Current</span>' : '';
-    return `
-    <div class="fgroup ${isCurrent ? 'open' : ''}" data-wi="${wi}">
-      <div class="fhead" onclick="toggleFGroup(this.parentElement)">
-        <div class="arrow">&#9656;</div>
-        <div class="fname">${escapeHtml(w.label)} <span class="muted" style="font-weight:400">${escapeHtml(w.date_range)}</span> ${tag}
-          <span class="muted" style="font-weight:500;font-size:11.5px">- ${w.tx_count} transactions</span>
-        </div>
-        <div class="weekly-summary">
-          <span class="amount pos" title="Inflow">+${fmtBig(w.inflow)}</span>
-          <span class="amount neg" title="Outflow">${fmtBig(w.outflow)}</span>
-          <span class="amount ${netCls}" title="Net" style="font-weight:700;border-left:2px solid var(--line);padding-left:10px">Net ${fmtBig(w.net)}</span>
-        </div>
-      </div>
-      <div class="fbody">${cats || '<div class="muted">No categorized transactions.</div>'}</div>
-    </div>`;
-  }).join("");
-
-  return el(`<div class="card">
-    <h2>Weekly Activity <span class="pill">${escapeHtml(W.month_label)}</span></h2>
-    <div class="body">
-      <div class="muted" style="margin-bottom:10px;font-size:12px">
-        Click any week to expand and see transactions grouped by category. Click a category for detail.
-      </div>
-      <div class="flow">${weekItems}</div>
-    </div></div>`);
 }
 
 // =============================================================================
@@ -407,10 +446,22 @@ function renderKPIs(){
     const arr = diff >= 0 ? "&#9650;" : "&#9660;";
     return `<span class="trend ${cls}">${arr} ${fmtCompact(Math.abs(diff))}</span>`;
   };
+  // For USD tab on the cash position card, use native USD when available
+  let endingDisplay = fmtBig(ending);
+  if(CUR === "USD" && D.bank_position_matrix){
+    const m = D.bank_position_matrix;
+    let totalUsd = 0;
+    for(const b of m.banks){
+      const cell = m.data[b][p.key];
+      if(cell.ending_usd !== undefined) totalUsd += cell.ending_usd;
+      else totalUsd += cell.ending / 17000;
+    }
+    endingDisplay = fmtTotalCash(ending, totalUsd);
+  }
   const div = el(`<div class="kpi-row"></div>`);
   div.appendChild(el(`<div class="kpi pos">
     <div class="lbl">Cash Position - End of ${p.label_short}</div>
-    <div class="val">${fmtBig(ending)}${trendBadge(ending, prevEnding)}</div>
+    <div class="val">${endingDisplay}${trendBadge(ending, prevEnding)}</div>
     <div class="sub">Total balance across all bank accounts</div></div>`));
   div.appendChild(el(`<div class="kpi pos">
     <div class="lbl">Inflow - ${p.label_short}</div>
@@ -549,15 +600,30 @@ function renderBankMatrix(){
   };
   const periodHeaders = D.periods.map(p=>`<th>${escapeHtml(p.label_long)}</th>`).join("");
   const rows = m.banks.map(b=>{
+    const cur = (DATA.bank_currencies && DATA.bank_currencies[b]) || "IDR";
+    const tag = cur === "USD" ? ' <span class="muted" style="font-size:10px;font-weight:400">(USD)</span>' : "";
     const cells = D.periods.map(p=>{
-      const v = m.data[b][p.key].ending;
-      const ch = m.data[b][p.key].change;
+      const cell = m.data[b][p.key];
+      const v = cell.ending;
+      const usdV = cell.ending_usd !== undefined ? cell.ending_usd : null;
+      const ch = cell.change;
       const ch_str = ch ? ` <span class="muted" style="font-size:10.5px">(Δ ${fmtCompact(ch)})</span>` : "";
-      return `<td><span class="heat" style="background:${heatColor(v)}">${fmtBig(v)}${ch_str}</span></td>`;
+      return `<td><span class="heat" style="background:${heatColor(v)}">${fmtBankAmt(v, usdV)}${ch_str}</span></td>`;
     }).join("");
-    return `<tr><td>${escapeHtml(b)}</td>${cells}</tr>`;
+    return `<tr><td>${escapeHtml(b)}${tag}</td>${cells}</tr>`;
   }).join("");
-  const totalRow = D.periods.map(p=>`<td>${fmtBig(m.totals[p.key])}</td>`).join("");
+  const totalRow = D.periods.map(p=>{
+    let totalUsd = 0;
+    if(CUR === "USD"){
+      for(const b of m.banks){
+        const cell = m.data[b][p.key];
+        if(cell.ending_usd !== undefined) totalUsd += cell.ending_usd;
+        else totalUsd += cell.ending / 17000;
+      }
+    }
+    const display = (CUR === "USD") ? fmtTotalCash(m.totals[p.key], totalUsd) : fmtBig(m.totals[p.key]);
+    return `<td>${display}</td>`;
+  }).join("");
   card.querySelector("#bmBody").innerHTML = `
     <table class="bank-matrix">
       <thead><tr><th>Bank</th>${periodHeaders}</tr></thead>

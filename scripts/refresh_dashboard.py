@@ -24,6 +24,7 @@ from lib_pivot import (
     read_all_banks, detect_currency_rates, all_periods,
     aggregate_by_path, aggregate_beginning_balance,
     aggregate_net_change_per_bank, build_cf_structure,
+    aggregate_beginning_balance_usd, aggregate_net_change_per_bank_usd,
 )
 from lib_excel import write_cf_summary, write_bank_sheets
 from lib_dashboard import build_dashboard_data
@@ -68,6 +69,8 @@ def main():
     agg = aggregate_by_path(rows)
     bb_agg = aggregate_beginning_balance(rows)
     net_change_agg = aggregate_net_change_per_bank(rows)
+    bb_agg_usd = aggregate_beginning_balance_usd(rows)
+    net_change_agg_usd = aggregate_net_change_per_bank_usd(rows)
 
     print("Building CF Summary structure ...")
     lines = build_cf_structure(agg, periods)
@@ -90,7 +93,9 @@ def main():
 
     print("Building dashboard data ...")
     data = build_dashboard_data(rows, agg, bb_agg, net_change_agg,
-                                lines, periods, usd_rate, inr_rate)
+                                lines, periods, usd_rate, inr_rate,
+                                bb_agg_usd=bb_agg_usd,
+                                net_change_agg_usd=net_change_agg_usd)
     PUBLIC_DIR.mkdir(exist_ok=True)
     json_text = json.dumps(data, indent=2, default=str)
 

@@ -26,7 +26,11 @@ OUTFLOW_BUCKETS_ID = {
 
 
 def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
-                         usd_rate, inr_rate):
+                         usd_rate, inr_rate, bb_agg_usd=None,
+                         net_change_agg_usd=None):
+    bb_agg_usd = bb_agg_usd or {}
+    net_change_agg_usd = net_change_agg_usd or {}
+
     cf_summary = []
     for line in lines:
         if line["kind"] == "blank":
@@ -126,8 +130,10 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
 
     incoming_drill = _build_incoming_drill(rows, periods)
     outflow_drill = _build_outflow_drill(rows, periods)
-    bp_matrix = _build_bank_matrix(bb_agg, net_change_agg, periods)
+    bp_matrix = _build_bank_matrix(bb_agg, net_change_agg, periods,
+                                   bb_agg_usd, net_change_agg_usd)
     daily = _build_daily_view(rows, periods)
+    bank_currencies = _bank_currencies(rows)
 
     period_meta = []
     for p in periods:
@@ -153,7 +159,17 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
         "outflow_drill": outflow_drill,
         "bank_position_matrix": bp_matrix,
         "daily": daily,
+        "bank_currencies": bank_currencies,
     }
+
+
+def _bank_currencies(rows):
+    out = {}
+    for r in rows:
+        b = r.get("bank")
+        if b:
+            out[b] = r.get("bank_currency", "IDR")
+    return out
 
 
 def _build_incoming_drill(rows, periods):
@@ -237,7 +253,10 @@ def _build_outflow_drill(rows, periods):
     return out
 
 
-def _build_bank_matrix(bb_agg, net_change_agg, periods):
+def _build_bank_matrix(bb_agg, net_change_agg, periods,
+                       bb_agg_usd=None, net_change_agg_usd=None):
+    bb_agg_usd = bb_agg_usd or {}
+    net_change_agg_usd = net_change_agg_usd or {}
     all_banks = sorted({b for (b, p) in bb_agg.keys()}
                        | {b for (b, p) in net_change_agg.keys()})
     data = {}
@@ -246,10 +265,19 @@ def _build_bank_matrix(bb_agg, net_change_agg, periods):
         for p in periods:
             opening = bb_agg.get((bank, p), 0.0)
             change = net_change_agg.get((bank, p), 0.0)
-            row[p] = {
+            opening_usd = bb_agg_usd.get((bank, p))
+            change_usd = net_change_agg_usd.get((bank, p))
+            cell = {
                 "opening": opening, "change": change,
                 "ending": opening + change,
             }
+            if opening_usd is not None or change_usd is not None:
+                ou = opening_usd or 0.0
+                cu = change_usd or 0.0
+                cell["opening_usd"] = ou
+                cell["change_usd"] = cu
+                cell["ending_usd"] = ou + cu
+            row[p] = cell
         data[bank] = row
     totals = {p: sum(data[b][p]["ending"] for b in all_banks) for p in periods}
     return {"banks": all_banks, "periods": periods, "data": data, "totals": totals}
@@ -258,15 +286,22 @@ def _build_bank_matrix(bb_agg, net_change_agg, periods):
 def _build_daily_view(rows, periods):
     if not periods:
         return {"as_of": None, "dates": [], "bank_position": {}, "totals": [],
-                "inout": [], "current_position": {}, "mtd": {}, "recent": []}
+                "inout": [], "current_position": {}, "mtd": {}, "recent": [],
+                "bank_position_usd": {}, "current_position_usd": {}}
 
     first_period = periods[0]
     opening = defaultdict(float)
+    opening_usd = defaultdict(float)
+    has_usd = defaultdict(bool)
     for r in rows:
         if r["category"] == "Beginning Balance" and r["period"] == first_period:
             opening[r["bank"]] += r["amount"]
+            if r.get("bank_currency") == "USD" and r.get("amount_usd") is not None:
+                opening_usd[r["bank"]] += r["amount_usd"]
+                has_usd[r["bank"]] = True
 
     by_bank_date = defaultdict(lambda: defaultdict(float))
+    by_bank_date_usd = defaultdict(lambda: defaultdict(float))
     for r in rows:
         if r["category"] == "Beginning Balance":
             continue
@@ -274,15 +309,20 @@ def _build_daily_view(rows, periods):
             continue
         d = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])
         by_bank_date[r["bank"]][d] += r["amount"]
+        if r.get("bank_currency") == "USD" and r.get("amount_usd") is not None:
+            by_bank_date_usd[r["bank"]][d] += r["amount_usd"]
+            has_usd[r["bank"]] = True
 
     all_dates = sorted({d for bd in by_bank_date.values() for d in bd.keys()})
     if not all_dates:
         return {"as_of": None, "dates": [], "bank_position": {}, "totals": [],
-                "inout": [], "current_position": {}, "mtd": {}, "recent": []}
+                "inout": [], "current_position": {}, "mtd": {}, "recent": [],
+                "bank_position_usd": {}, "current_position_usd": {}}
     as_of = all_dates[-1]
 
     all_banks = sorted(set(by_bank_date.keys()) | set(opening.keys()))
     bank_position = {}
+    bank_position_usd = {}
     for bank in all_banks:
         running = opening.get(bank, 0.0)
         per = {}
@@ -290,6 +330,13 @@ def _build_daily_view(rows, periods):
             running += by_bank_date[bank].get(d, 0.0)
             per[d] = running
         bank_position[bank] = per
+        if has_usd.get(bank):
+            running_usd = opening_usd.get(bank, 0.0)
+            per_usd = {}
+            for d in all_dates:
+                running_usd += by_bank_date_usd[bank].get(d, 0.0)
+                per_usd[d] = running_usd
+            bank_position_usd[bank] = per_usd
 
     totals = []
     for d in all_dates:
@@ -298,6 +345,8 @@ def _build_daily_view(rows, periods):
 
     current_position = {b: bank_position[b][as_of] for b in all_banks}
     current_total = sum(current_position.values())
+    current_position_usd = {b: bank_position_usd[b][as_of]
+                             for b in bank_position_usd}
 
     daily_inflow = defaultdict(float)
     daily_outflow = defaultdict(float)
@@ -343,8 +392,11 @@ def _build_daily_view(rows, periods):
 
     return {
         "as_of": as_of, "dates": all_dates, "banks": all_banks,
-        "bank_position": bank_position, "totals": totals, "inout": inout,
+        "bank_position": bank_position,
+        "bank_position_usd": bank_position_usd,
+        "totals": totals, "inout": inout,
         "current_position": current_position, "current_total": current_total,
+        "current_position_usd": current_position_usd,
         "mtd": mtd, "recent": recent, "weekly": weekly,
     }
 

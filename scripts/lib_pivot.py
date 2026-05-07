@@ -49,6 +49,14 @@ def month_long_label(period_key: str) -> str:
 
 
 def read_all_banks(wb):
+    """Read transactions from "All Banks" sheet.
+
+    Column layout (1-indexed):
+      A=Unit  B=Bank  C=Date  D=Period  E=Category  F=Sub-Category
+      G=Detail-Category  H=Parties  I=Details  J=Vch Type  K=Vch No.
+      L=IDR (always filled, IDR equivalent at actual daily rate)
+      M=USD (only for USD banks, native USD amount; can be empty)
+    """
     ws = wb["All Banks"]
     rows = []
     for row in ws.iter_rows(min_row=3, max_row=ws.max_row, values_only=True):
@@ -59,9 +67,16 @@ def read_all_banks(wb):
         amt = row[11]
         if amt is None:
             continue
+        usd_amt = row[12] if len(row) > 12 else None
+        try:
+            usd_amt = float(usd_amt) if usd_amt is not None and usd_amt != "" else None
+        except (TypeError, ValueError):
+            usd_amt = None
+        is_usd_bank = "USD" in bank.upper()
         rows.append({
             "unit": unit,
             "bank": bank,
+            "bank_currency": "USD" if is_usd_bank else "IDR",
             "date": row[2],
             "period": parse_period(row[3]),
             "category": _norm(row[4]),
@@ -72,6 +87,7 @@ def read_all_banks(wb):
             "vch_type": _norm(row[9]),
             "vch_no": _norm(row[10]),
             "amount": float(amt),
+            "amount_usd": usd_amt,
         })
     return rows
 
@@ -122,10 +138,46 @@ def aggregate_net_change_per_bank(rows):
     return agg
 
 
+def aggregate_beginning_balance_usd(rows):
+    """Native USD opening per (bank, period) - only for USD banks with data."""
+    agg = defaultdict(float)
+    for r in rows:
+        if r["category"] != "Beginning Balance":
+            continue
+        if not r.get("period"):
+            continue
+        if r.get("bank_currency") != "USD":
+            continue
+        if r.get("amount_usd") is None:
+            continue
+        agg[(r["bank"], r["period"])] += r["amount_usd"]
+    return agg
+
+
+def aggregate_net_change_per_bank_usd(rows):
+    """Native USD net change per (bank, period) - only for USD banks with data."""
+    agg = defaultdict(float)
+    for r in rows:
+        if r["category"] == "Beginning Balance":
+            continue
+        if not r.get("period"):
+            continue
+        if r.get("bank_currency") != "USD":
+            continue
+        if r.get("amount_usd") is None:
+            continue
+        agg[(r["bank"], r["period"])] += r["amount_usd"]
+    return agg
+
+
+def has_any_usd_native_data(rows):
+    for r in rows:
+        if r.get("bank_currency") == "USD" and r.get("amount_usd") is not None:
+            return True
+    return False
+
+
 def build_cf_structure(agg, periods):
-    """Build the CF summary line list with values per period.
-    Returns list[dict]: {label, kind, indent, values: {period: idr_amount}}
-    """
     def pull(cat=None, sub=None, det=None):
         out = defaultdict(float)
         for (period, c, s, d), v in agg.items():
@@ -154,7 +206,6 @@ def build_cf_structure(agg, periods):
         lines.append({"label": label, "kind": kind, "indent": indent,
                       "values": values or {}})
 
-    # ------- INCOMING -------
     add("INCOMING", "section_header")
     incoming_dets = ["Incoming - Customers", "Incoming - Bank Loan", "Incoming - Others"]
     for det in incoming_dets:
@@ -166,10 +217,8 @@ def build_cf_structure(agg, periods):
     add("TOTAL INCOMING", "subtotal_section", pull(cat="Incoming"))
     add("", "blank")
 
-    # ------- OUTFLOW -------
     add("OUTFLOW", "section_header")
 
-    # CAPEX
     add("CAPEX", "subsection", indent=1)
     capex_dets = sorted({d for (p, c, s, d), v in agg.items()
                          if c == "Outflow - CAPEX" and d})
@@ -178,7 +227,6 @@ def build_cf_structure(agg, periods):
     add("TOTAL CAPEX", "subtotal_section", pull(cat="Outflow - CAPEX"), indent=1)
     add("", "blank")
 
-    # INTERCOMPANY LOAN  (Outflow - Loan, excluding Bank Term Loans)
     bank_term_loans = {"Citibank Term Loan", "DBS Term Loan"}
     intercompany_dets = sorted({d for (p, c, s, d), v in agg.items()
                                 if c == "Outflow - Loan"
@@ -191,7 +239,6 @@ def build_cf_structure(agg, periods):
             pull_excluding("Outflow - Loan", "Loan", bank_term_loans), indent=1)
         add("", "blank")
 
-    # BANK LOAN REPAYMENT
     bank_loans_present = sorted({d for (p, c, s, d), v in agg.items()
                                  if c == "Outflow - Loan" and d in bank_term_loans})
     if bank_loans_present:
@@ -206,7 +253,6 @@ def build_cf_structure(agg, periods):
             dict(bl_total), indent=1)
         add("", "blank")
 
-    # OPEX - DIRECT EXPENSE
     add("OPEX - DIRECT EXPENSE", "subsection", indent=1)
     direct_leaves = {}
     for (p, c, s, d), v in agg.items():
@@ -220,7 +266,6 @@ def build_cf_structure(agg, periods):
         pull(cat="Outflow - Direct Expense"), indent=1)
     add("", "blank")
 
-    # OPEX - INDIRECT EXPENSE
     add("OPEX - INDIRECT EXPENSE", "subsection", indent=1)
     indirect_subs = sorted({s for (p, c, s, d), v in agg.items()
                             if c == "Outflow - Indirect Expense" and s})
@@ -238,7 +283,6 @@ def build_cf_structure(agg, periods):
         pull(cat="Outflow - Indirect Expense"), indent=1)
     add("", "blank")
 
-    # OTHERS
     others_cats = ["Outflow - Imprest Fund", "Outflow - Cash Advance",
                    "Outflow - Bank Guarantee"]
     others_present = [c for c in others_cats
@@ -258,7 +302,6 @@ def build_cf_structure(agg, periods):
         add("TOTAL OTHERS", "subtotal_section", dict(others_total), indent=1)
         add("", "blank")
 
-    # FINANCE COST
     add("FINANCE COST", "subsection", indent=1)
     fc_leaves = {}
     for (p, c, s, d), v in agg.items():
@@ -272,7 +315,6 @@ def build_cf_structure(agg, periods):
         pull(cat="Outflow - Finance Cost"), indent=1)
     add("", "blank")
 
-    # TOTAL OUTFLOW
     outflow_total = defaultdict(float)
     for (p, c, s, d), v in agg.items():
         if c.startswith("Outflow"):
