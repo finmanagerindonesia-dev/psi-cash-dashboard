@@ -112,7 +112,13 @@ git commit -m "Refresh dashboard %stamp%" >> "%LOGFILE%" 2>&1
 call :LOG "[4/4] Git: push ..."
 git push >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
-    call :LOG "[WARN] git push gagal. Lihat refresh.log."
+    call :LOG "[INFO] Plain git push gagal. Mencoba dengan --set-upstream ..."
+    git push --set-upstream origin main >> "%LOGFILE%" 2>&1
+    if errorlevel 1 (
+        call :LOG "[WARN] git push gagal. Lihat refresh.log."
+    ) else (
+        call :LOG "      OK - push berhasil dengan upstream tracking."
+    )
 )
 
 :SUCCESS_END
