@@ -72,16 +72,32 @@ def main():
     bb_agg_usd = aggregate_beginning_balance_usd(rows)
     net_change_agg_usd = aggregate_net_change_per_bank_usd(rows)
 
-    print("Building CF Summary structure ...")
+    # CF Summary in Excel only includes COMPLETED months (current month
+    # excluded so monthly reports aren't polluted by partial-month data).
+    today_period = f"{datetime.now().year:04d}-{datetime.now().month:02d}"
+    completed_periods = [p for p in periods if p < today_period]
+    print(f"  Today = {today_period}. Completed months for Excel CF Summary: "
+          f"{', '.join(completed_periods) if completed_periods else '(none)'}")
+
+    if completed_periods:
+        print("Building CF Summary structure (completed months) ...")
+        completed_lines = build_cf_structure(agg, completed_periods, rows=rows)
+
+        print("Writing CF Summary sheet (completed months only) ...")
+        write_cf_summary(wb, completed_lines, completed_periods,
+                         usd_rate, inr_rate, bb_agg)
+
+        print("Writing CF Summary (IDR Mio) sheet (completed months only) ...")
+        write_cf_summary(wb, completed_lines, completed_periods,
+                         usd_rate, inr_rate, bb_agg,
+                         sheet_name="CF Summary (IDR Mio)", divisor=1_000_000,
+                         unit_suffix=" (in IDR Million)")
+    else:
+        print("[INFO] No completed months yet - skipping CF Summary sheets.")
+
+    # Dashboard always uses ALL periods (Daily View needs current month).
+    print("Building CF Summary structure for dashboard (all periods) ...")
     lines = build_cf_structure(agg, periods, rows=rows)
-
-    print("Writing CF Summary sheet ...")
-    write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg)
-
-    print("Writing CF Summary (IDR Mio) sheet ...")
-    write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
-                     sheet_name="CF Summary (IDR Mio)", divisor=1_000_000,
-                     unit_suffix=" (in IDR Million)")
 
     print("Writing Bank - <Month> sheets ...")
     write_bank_sheets(wb, rows, bb_agg, net_change_agg, periods,
