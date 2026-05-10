@@ -36,10 +36,6 @@
     <div class="header-right">
       <div class="stamp" id="stamp">Loading data...</div>
       <div class="controls">
-        <div class="ctrl">
-          <label>Month:</label>
-          <select id="periodSel"></select>
-        </div>
         <div class="btn-grp" id="curgrp">
           <button class="active" data-cur="IDR">IDR</button>
           <button data-cur="USD">USD</button>
@@ -58,6 +54,14 @@
     <span class="tab-asof" id="asOfBanner"></span>
   </div>
 </nav>
+
+<div class="month-bar" id="monthBar">
+  <div class="container">
+    <span class="month-bar-label">Showing data for month:</span>
+    <select id="periodSel"></select>
+    <span class="month-bar-hint">All numbers below reflect the selected month.</span>
+  </div>
+</div>
 
 <main class="container" id="root">
   <div class="empty">Loading dashboard data...</div>

@@ -179,6 +179,9 @@ function render(){
     asof ? `Data as of: <b>${fmtDate(asof)}</b>` : "";
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.tab === TAB));
+  // Show month bar only on Monthly View
+  const monthBar = document.getElementById("monthBar");
+  if(monthBar) monthBar.classList.toggle("hidden", TAB !== "monthly");
   if(TAB === "daily") {
     r.appendChild(renderDailyKPIs());
     r.appendChild(renderDailyBankTable());
