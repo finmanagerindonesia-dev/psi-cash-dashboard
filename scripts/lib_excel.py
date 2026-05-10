@@ -43,10 +43,14 @@ def _write_currency_row(ws, r, col, idr, usd_rate, inr_rate, fill, font):
         cell.font = font
 
 
-def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg):
-    if "CF Summary" in wb.sheetnames:
-        del wb["CF Summary"]
-    ws = wb.create_sheet("CF Summary", 0)
+def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
+                     sheet_name="CF Summary", divisor=1, unit_suffix=""):
+    """Write CF Summary sheet. divisor scales all values (e.g. 1_000_000
+    for IDR Million view). unit_suffix is appended to the rate header."""
+    if sheet_name in wb.sheetnames:
+        del wb[sheet_name]
+    insert_at = 0 if sheet_name == "CF Summary" else 1
+    ws = wb.create_sheet(sheet_name, insert_at)
 
     last_col = 2 + len(periods) * 3 + 3
 
@@ -58,7 +62,8 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg):
     # Rate / timestamp row
     ws.cell(row=2, column=2,
             value=(f"USD = Rp {int(usd_rate):,}   |   INR = Rp {int(inr_rate)}"
-                   f"   |   Updated: {datetime.now():%d %b %Y %H:%M}"))
+                   f"   |   Updated: {datetime.now():%d %b %Y %H:%M}"
+                   + (unit_suffix or "")))
     ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=last_col)
     ws.cell(row=2, column=2).font = Font(italic=True, color="666666")
     ws.cell(row=2, column=2).alignment = Alignment(horizontal="center")
@@ -107,7 +112,7 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg):
         ytd = {"IDR": 0.0, "USD": 0.0, "INR": 0.0}
         col = 3
         for period in periods:
-            idr = line["values"].get(period, 0.0) or 0.0
+            idr = (line["values"].get(period, 0.0) or 0.0) / divisor
             usd = idr / usd_rate if usd_rate else 0
             inr = idr / inr_rate if inr_rate else 0
             ytd["IDR"] += idr
@@ -135,10 +140,10 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg):
     ws.cell(row=r, column=2).font = bb_font
     col = 3
     for period in periods:
-        opening = sum(v for (b, p), v in bb_agg.items() if p == period)
+        opening = sum(v for (b, p), v in bb_agg.items() if p == period) / divisor
         _write_currency_row(ws, r, col, opening, usd_rate, inr_rate, bb_fill, bb_font)
         col += 3
-    first_opening = sum(v for (b, p), v in bb_agg.items() if p == periods[0])
+    first_opening = sum(v for (b, p), v in bb_agg.items() if p == periods[0]) / divisor
     _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate, bb_fill, bb_font)
     r += 1
 
@@ -159,7 +164,7 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg):
     for period in periods:
         opening = sum(v for (b, p), v in bb_agg.items() if p == period)
         net = incoming_sum.get(period, 0) + outflow_sum.get(period, 0)
-        ending = opening + net
+        ending = (opening + net) / divisor
         ytd_ending = ending
         _write_currency_row(ws, r, col, ending, usd_rate, inr_rate, bb_fill, bb_font)
         col += 3

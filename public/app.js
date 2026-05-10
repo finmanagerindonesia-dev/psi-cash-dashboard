@@ -189,6 +189,8 @@ function render(){
     r.appendChild(renderKPIs());
     r.appendChild(renderRow2());
     r.appendChild(renderBankMatrix());
+    const fx = renderFXRates();
+    if(fx) r.appendChild(fx);
     r.appendChild(renderTrend());
     r.appendChild(renderCFSummary());
   }
@@ -670,6 +672,38 @@ function renderTrend(){
     });
   },10);
   return card;
+}
+
+function renderFXRates(){
+  const rates = DATA.monthly_fx_rates;
+  if(!rates) return null;
+  const periods = DATA.periods;
+  const hasAny = periods.some(p => rates[p.key]);
+  // Build cells for each period (always show, fallback if no data)
+  const cells = periods.map(p => {
+    const info = rates[p.key];
+    if(info && info.rate){
+      return `<div class="fx-chip">
+        <div class="fx-month">${escapeHtml(p.label_short)}</div>
+        <div class="fx-rate">Rp ${Math.round(info.rate).toLocaleString("en-US")}</div>
+        <div class="fx-samples">${info.samples} tx</div>
+      </div>`;
+    }
+    return `<div class="fx-chip fx-empty">
+      <div class="fx-month">${escapeHtml(p.label_short)}</div>
+      <div class="fx-rate muted">-</div>
+      <div class="fx-samples muted">no data</div>
+    </div>`;
+  }).join("");
+  const note = hasAny
+    ? `Computed as weighted average from USD bank transactions (sum of IDR / sum of native USD).`
+    : `<b>No native USD data found in column M of "All Banks".</b> Treasury can fill column M with native USD amounts for Mandiri USD / SBI USD entries to see actual FX rates here.`;
+  return el(`<div class="card">
+    <h2>USD/IDR Exchange Rates Used <span class="pill">per Month</span></h2>
+    <div class="body">
+      <div class="fx-chips">${cells}</div>
+      <div class="muted" style="margin-top:10px;font-size:11.5px">${note}</div>
+    </div></div>`);
 }
 
 function renderCFSummary(){

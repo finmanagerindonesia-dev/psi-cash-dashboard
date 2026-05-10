@@ -177,7 +177,10 @@ def has_any_usd_native_data(rows):
     return False
 
 
-def build_cf_structure(agg, periods):
+def build_cf_structure(agg, periods, rows=None):
+    """Build CF Summary line list. Pass `rows` to enable party-level
+    breakdowns under Incoming - Customers and Incoming - Bank Loan."""
+    rows = rows or []
     def pull(cat=None, sub=None, det=None):
         out = defaultdict(float)
         for (period, c, s, d), v in agg.items():
@@ -208,8 +211,21 @@ def build_cf_structure(agg, periods):
 
     add("INCOMING", "section_header")
     incoming_dets = ["Incoming - Customers", "Incoming - Bank Loan", "Incoming - Others"]
+    breakdown_dets = {"Incoming - Customers", "Incoming - Bank Loan"}
     for det in incoming_dets:
         add(det, "leaf", pull(cat="Incoming", det=det), indent=1)
+        # Add party-level breakdown under Customers and Bank Loan
+        if det in breakdown_dets:
+            parties_data = {}
+            for r in rows:
+                if (r.get("category") == "Incoming"
+                        and r.get("detail_category") == det
+                        and r.get("period") and r.get("parties")):
+                    parties_data.setdefault(r["parties"], defaultdict(float))[r["period"]] += r["amount"]
+            sorted_parties = sorted(parties_data.items(),
+                                    key=lambda x: -sum(x[1].values()))
+            for party, p_vals in sorted_parties:
+                add(party, "leaf", dict(p_vals), indent=2)
     extra = sorted({d for (p, c, s, d), v in agg.items()
                     if c == "Incoming" and d not in incoming_dets})
     for det in extra:

@@ -130,10 +130,16 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
 
     incoming_drill = _build_incoming_drill(rows, periods)
     outflow_drill = _build_outflow_drill(rows, periods)
-    bp_matrix = _build_bank_matrix(bb_agg, net_change_agg, periods,
+    bp_matrix = _build_bank_matrix(rows, bb_agg, net_change_agg, periods,
                                    bb_agg_usd, net_change_agg_usd)
     daily = _build_daily_view(rows, periods)
     bank_currencies = _bank_currencies(rows)
+    monthly_fx_rates = _compute_monthly_fx_rates(rows, periods)
+
+    # Override trend.ending using bp_matrix.totals so it reflects the
+    # cumulative carry-forward (correct even if Beginning Balance entries
+    # for newer months are not yet in "All Banks").
+    trend["ending"] = [bp_matrix["totals"].get(p, 0.0) for p in periods]
 
     period_meta = []
     for p in periods:
@@ -160,7 +166,38 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
         "bank_position_matrix": bp_matrix,
         "daily": daily,
         "bank_currencies": bank_currencies,
+        "monthly_fx_rates": monthly_fx_rates,
     }
+
+
+def _compute_monthly_fx_rates(rows, periods):
+    """Compute USD-IDR rate per period from USD bank transactions where both
+    IDR and native USD amounts are provided. Weighted average within each
+    period (sum of IDR / sum of USD). Returns {period: rate_or_None}."""
+    by_period = defaultdict(lambda: {"idr": 0.0, "usd": 0.0, "count": 0})
+    for r in rows:
+        if r.get("bank_currency") != "USD":
+            continue
+        if r.get("amount_usd") is None or r.get("amount_usd") == 0:
+            continue
+        if r["amount"] == 0:
+            continue
+        if not r.get("period"):
+            continue
+        by_period[r["period"]]["idr"] += abs(r["amount"])
+        by_period[r["period"]]["usd"] += abs(r["amount_usd"])
+        by_period[r["period"]]["count"] += 1
+    out = {}
+    for p in periods:
+        d = by_period.get(p)
+        if d and d["usd"] > 0:
+            out[p] = {
+                "rate": d["idr"] / d["usd"],
+                "samples": d["count"],
+            }
+        else:
+            out[p] = None
+    return out
 
 
 def _bank_currencies(rows):
@@ -253,31 +290,66 @@ def _build_outflow_drill(rows, periods):
     return out
 
 
-def _build_bank_matrix(bb_agg, net_change_agg, periods,
+def _build_bank_matrix(rows, bb_agg, net_change_agg, periods,
                        bb_agg_usd=None, net_change_agg_usd=None):
+    """Build per-bank-per-period balance matrix using cumulative carry-forward.
+
+    Opening balance for the FIRST period comes from Beginning Balance entries
+    in that period. For subsequent periods, opening = previous period's ending.
+    This ensures Monthly View matches Daily View even when treasury hasn't yet
+    entered Beginning Balance entries for newer months.
+    """
     bb_agg_usd = bb_agg_usd or {}
     net_change_agg_usd = net_change_agg_usd or {}
+
+    if not periods:
+        return {"banks": [], "periods": [], "data": {}, "totals": {}}
+
+    first_period = periods[0]
+
+    # Initial opening: only from FIRST period's BB entries
+    opening_init = defaultdict(float)
+    opening_init_usd = defaultdict(float)
+    has_usd_init = defaultdict(bool)
+    for r in rows:
+        if r["category"] == "Beginning Balance" and r["period"] == first_period:
+            opening_init[r["bank"]] += r["amount"]
+            if r.get("bank_currency") == "USD" and r.get("amount_usd") is not None:
+                opening_init_usd[r["bank"]] += r["amount_usd"]
+                has_usd_init[r["bank"]] = True
+
     all_banks = sorted({b for (b, p) in bb_agg.keys()}
-                       | {b for (b, p) in net_change_agg.keys()})
+                       | {b for (b, p) in net_change_agg.keys()}
+                       | {b for (b, p) in bb_agg_usd.keys()}
+                       | {b for (b, p) in net_change_agg_usd.keys()})
+
+    # Detect if a bank ever has native USD data
+    bank_has_usd = {b: has_usd_init.get(b, False) for b in all_banks}
+    for (b, p), _ in net_change_agg_usd.items():
+        bank_has_usd[b] = True
+
     data = {}
     for bank in all_banks:
+        cumulative = opening_init.get(bank, 0.0)
+        cumulative_usd = opening_init_usd.get(bank, 0.0)
         row = {}
         for p in periods:
-            opening = bb_agg.get((bank, p), 0.0)
             change = net_change_agg.get((bank, p), 0.0)
-            opening_usd = bb_agg_usd.get((bank, p))
-            change_usd = net_change_agg_usd.get((bank, p))
+            ending = cumulative + change
             cell = {
-                "opening": opening, "change": change,
-                "ending": opening + change,
+                "opening": cumulative,
+                "change": change,
+                "ending": ending,
             }
-            if opening_usd is not None or change_usd is not None:
-                ou = opening_usd or 0.0
-                cu = change_usd or 0.0
-                cell["opening_usd"] = ou
-                cell["change_usd"] = cu
-                cell["ending_usd"] = ou + cu
+            if bank_has_usd.get(bank):
+                change_usd = net_change_agg_usd.get((bank, p), 0.0)
+                ending_usd = cumulative_usd + change_usd
+                cell["opening_usd"] = cumulative_usd
+                cell["change_usd"] = change_usd
+                cell["ending_usd"] = ending_usd
+                cumulative_usd = ending_usd
             row[p] = cell
+            cumulative = ending
         data[bank] = row
     totals = {p: sum(data[b][p]["ending"] for b in all_banks) for p in periods}
     return {"banks": all_banks, "periods": periods, "data": data, "totals": totals}

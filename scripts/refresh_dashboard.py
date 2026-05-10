@@ -73,10 +73,15 @@ def main():
     net_change_agg_usd = aggregate_net_change_per_bank_usd(rows)
 
     print("Building CF Summary structure ...")
-    lines = build_cf_structure(agg, periods)
+    lines = build_cf_structure(agg, periods, rows=rows)
 
     print("Writing CF Summary sheet ...")
     write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg)
+
+    print("Writing CF Summary (IDR Mio) sheet ...")
+    write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
+                     sheet_name="CF Summary (IDR Mio)", divisor=1_000_000,
+                     unit_suffix=" (in IDR Million)")
 
     print("Writing Bank - <Month> sheets ...")
     write_bank_sheets(wb, rows, bb_agg, net_change_agg, periods,
