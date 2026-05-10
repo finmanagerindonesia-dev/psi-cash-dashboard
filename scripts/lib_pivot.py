@@ -243,30 +243,57 @@ def build_cf_structure(agg, periods, rows=None):
     add("TOTAL CAPEX", "subtotal_section", pull(cat="Outflow - CAPEX"), indent=1)
     add("", "blank")
 
+    # Loan categories: handle old combined ("Outflow - Loan") and new split
+    # ("Outflow - Bank Loan", "Outflow - Intercompany Loan", and any variant).
     bank_term_loans = {"Citibank Term Loan", "DBS Term Loan"}
+
+    def _is_bank_loan(cat, det):
+        if not cat or not cat.startswith("Outflow"):
+            return False
+        cl = cat.lower()
+        if "loan" in cl and ("bank" in cl or "term" in cl):
+            return True
+        if cat == "Outflow - Loan" and det in bank_term_loans:
+            return True
+        return False
+
+    def _is_intercompany_loan(cat, det):
+        if not cat or not cat.startswith("Outflow"):
+            return False
+        cl = cat.lower()
+        if "loan" in cl and ("intercompany" in cl or "inter-company" in cl
+                              or "intra" in cl or "antar" in cl):
+            return True
+        if cat == "Outflow - Loan" and det not in bank_term_loans:
+            return True
+        return False
+
+    def _pull_pred(pred, det_filter=None):
+        out = defaultdict(float)
+        for (period, c, s, d), v in agg.items():
+            if pred(c, d):
+                if det_filter is None or d == det_filter:
+                    out[period] += v
+        return dict(out)
+
     intercompany_dets = sorted({d for (p, c, s, d), v in agg.items()
-                                if c == "Outflow - Loan"
-                                and d not in bank_term_loans and d})
+                                if _is_intercompany_loan(c, d) and d})
     if intercompany_dets:
         add("INTERCOMPANY LOAN", "subsection", indent=1)
         for det in intercompany_dets:
-            add(det, "leaf", pull(cat="Outflow - Loan", det=det), indent=2)
+            add(det, "leaf", _pull_pred(_is_intercompany_loan, det), indent=2)
         add("TOTAL INTERCOMPANY LOAN", "subtotal_section",
-            pull_excluding("Outflow - Loan", "Loan", bank_term_loans), indent=1)
+            _pull_pred(_is_intercompany_loan), indent=1)
         add("", "blank")
 
     bank_loans_present = sorted({d for (p, c, s, d), v in agg.items()
-                                 if c == "Outflow - Loan" and d in bank_term_loans})
+                                 if _is_bank_loan(c, d) and d})
     if bank_loans_present:
         add("BANK LOAN REPAYMENT", "subsection", indent=1)
         for det in bank_loans_present:
-            add(det, "leaf", pull(cat="Outflow - Loan", det=det), indent=2)
-        bl_total = defaultdict(float)
-        for det in bank_loans_present:
-            for p, v in pull(cat="Outflow - Loan", det=det).items():
-                bl_total[p] += v
+            add(det, "leaf", _pull_pred(_is_bank_loan, det), indent=2)
         add("TOTAL BANK LOAN REPAYMENT", "subtotal_section",
-            dict(bl_total), indent=1)
+            _pull_pred(_is_bank_loan), indent=1)
         add("", "blank")
 
     add("OPEX - DIRECT EXPENSE", "subsection", indent=1)
@@ -330,6 +357,33 @@ def build_cf_structure(agg, periods, rows=None):
     add("TOTAL FINANCE COST", "subtotal_section",
         pull(cat="Outflow - Finance Cost"), indent=1)
     add("", "blank")
+
+    # Catch-all: any outflow category not yet covered by sections above.
+    # This protects against treasury renaming categories without breaking the
+    # report - new/unknown outflow categories still appear with their detail
+    # rows under "OTHER OUTFLOW".
+    handled_cats = {"Outflow - CAPEX", "Outflow - Direct Expense",
+                    "Outflow - Indirect Expense", "Outflow - Finance Cost",
+                    "Outflow - Imprest Fund", "Outflow - Cash Advance",
+                    "Outflow - Bank Guarantee", "Outflow - Loan"}
+    other_outflow_cats = sorted({c for (p, c, s, d), v in agg.items()
+                                 if c and c.startswith("Outflow")
+                                 and c not in handled_cats
+                                 and not _is_bank_loan(c, d)
+                                 and not _is_intercompany_loan(c, d)})
+    if other_outflow_cats:
+        add("OTHER OUTFLOW", "subsection", indent=1)
+        for c in other_outflow_cats:
+            dets = sorted({d for (p, cc, s, d), v in agg.items()
+                           if cc == c and d})
+            for det in dets:
+                add(det, "leaf", pull(cat=c, det=det), indent=2)
+        oo_total = defaultdict(float)
+        for c in other_outflow_cats:
+            for p, v in pull(cat=c).items():
+                oo_total[p] += v
+        add("TOTAL OTHER OUTFLOW", "subtotal_section", dict(oo_total), indent=1)
+        add("", "blank")
 
     outflow_total = defaultdict(float)
     for (p, c, s, d), v in agg.items():

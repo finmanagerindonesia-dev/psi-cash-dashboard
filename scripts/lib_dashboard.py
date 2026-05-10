@@ -18,11 +18,32 @@ OUTFLOW_BUCKETS_ID = {
     "Outflow - Indirect Expense": ("OPEX - Indirect Expense", 2),
     "Outflow - Direct Expense": ("OPEX - Direct Expense (Production)", 3),
     "Outflow - Loan": ("Loans (Bank & Intercompany)", 4),
+    "Outflow - Bank Loan": ("Bank Loan Repayment", 4),
+    "Outflow - Intercompany Loan": ("Intercompany Loans", 4),
+    "Outflow - Inter Company Loan": ("Intercompany Loans", 4),
+    "Outflow - Inter-Company Loan": ("Intercompany Loans", 4),
     "Outflow - Finance Cost": ("Bank Charges & Interest", 5),
     "Outflow - Imprest Fund": ("Imprest Fund / Petty Cash", 6),
     "Outflow - Cash Advance": ("Cash Advance", 7),
     "Outflow - Bank Guarantee": ("Bank Guarantee", 8),
 }
+
+
+def _bucket_for_category(cat):
+    """Return (label, sort_order) for an outflow category, with fallbacks
+    based on keyword matching for treasury-renamed categories."""
+    if cat in OUTFLOW_BUCKETS_ID:
+        return OUTFLOW_BUCKETS_ID[cat]
+    if not cat or not cat.startswith("Outflow"):
+        return (cat or "Other", 99)
+    cl = cat.lower()
+    if "loan" in cl and ("bank" in cl or "term" in cl):
+        return ("Bank Loan Repayment", 4)
+    if "loan" in cl and ("intercompany" in cl or "inter-company" in cl
+                         or "inter company" in cl or "intra" in cl
+                         or "antar" in cl):
+        return ("Intercompany Loans", 4)
+    return (cat.replace("Outflow - ", ""), 99)
 
 
 def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
@@ -247,8 +268,7 @@ def _build_outflow_drill(rows, periods):
                 continue
             if r["period"] != period:
                 continue
-            blabel, _ = OUTFLOW_BUCKETS_ID.get(
-                r["category"], (r["category"].replace("Outflow - ", ""), 99))
+            blabel, _ = _bucket_for_category(r["category"])
             cat = r["category"]
             if cat == "Outflow - Indirect Expense":
                 sub = r["sub_category"] or "Other"
@@ -529,8 +549,7 @@ def _build_weekly_view(rows, as_of):
                     r["detail_category"], r["detail_category"] or "Other Receipt")
                 kind = "inflow"
             elif cat.startswith("Outflow"):
-                label, _ = OUTFLOW_BUCKETS_ID.get(
-                    cat, (cat.replace("Outflow - ", ""), 99))
+                label, _ = _bucket_for_category(cat)
                 kind = "outflow"
             else:
                 continue
