@@ -243,8 +243,9 @@ def build_cf_structure(agg, periods, rows=None):
     add("TOTAL CAPEX", "subtotal_section", pull(cat="Outflow - CAPEX"), indent=1)
     add("", "blank")
 
-    # Loan categories: handle old combined ("Outflow - Loan") and new split
-    # ("Outflow - Bank Loan", "Outflow - Intercompany Loan", and any variant).
+    # Loan categories: handle old combined ("Outflow - Loan"), new split
+    # ("Outflow - Bank Loan", "Outflow - Intercompany Loan", etc), and the
+    # "Receivable" / "Given" variant (loans we GAVE to others, who owe us).
     bank_term_loans = {"Citibank Term Loan", "DBS Term Loan"}
 
     def _is_bank_loan(cat, det):
@@ -257,8 +258,31 @@ def build_cf_structure(agg, periods, rows=None):
             return True
         return False
 
-    def _is_intercompany_loan(cat, det):
+    def _is_intercompany_receivable(cat, det):
+        """Loan we GAVE (intercompany receivable). Cash goes out, future cash in."""
         if not cat or not cat.startswith("Outflow"):
+            return False
+        full = (cat + " " + (det or "")).lower()
+        if "loan" not in full:
+            return False
+        if "receivable" not in full and "given" not in full:
+            return False
+        # Must have intercompany context, or already qualifies from cat name
+        if ("intercompany" in full or "inter-company" in full
+                or "intra" in full or "antar" in full):
+            return True
+        # Standalone "Loan Receivable" without "intercompany" word - still treat as receivable
+        if "loan receivable" in full or "loan given" in full:
+            return True
+        return False
+
+    def _is_intercompany_repayment(cat, det):
+        """Loan we owe and are paying back (intercompany payable repayment)."""
+        if not cat or not cat.startswith("Outflow"):
+            return False
+        if _is_intercompany_receivable(cat, det):
+            return False
+        if _is_bank_loan(cat, det):
             return False
         cl = cat.lower()
         if "loan" in cl and ("intercompany" in cl or "inter-company" in cl
@@ -268,6 +292,11 @@ def build_cf_structure(agg, periods, rows=None):
             return True
         return False
 
+    def _is_intercompany_loan(cat, det):
+        """Union of repayment + receivable (used by catch-all to skip both)."""
+        return (_is_intercompany_repayment(cat, det)
+                or _is_intercompany_receivable(cat, det))
+
     def _pull_pred(pred, det_filter=None):
         out = defaultdict(float)
         for (period, c, s, d), v in agg.items():
@@ -276,16 +305,29 @@ def build_cf_structure(agg, periods, rows=None):
                     out[period] += v
         return dict(out)
 
-    intercompany_dets = sorted({d for (p, c, s, d), v in agg.items()
-                                if _is_intercompany_loan(c, d) and d})
-    if intercompany_dets:
-        add("INTERCOMPANY LOAN", "subsection", indent=1)
-        for det in intercompany_dets:
-            add(det, "leaf", _pull_pred(_is_intercompany_loan, det), indent=2)
-        add("TOTAL INTERCOMPANY LOAN", "subtotal_section",
-            _pull_pred(_is_intercompany_loan), indent=1)
+    # 1. INTERCOMPANY LOAN REPAYMENT
+    repayment_dets = sorted({d for (p, c, s, d), v in agg.items()
+                             if _is_intercompany_repayment(c, d) and d})
+    if repayment_dets:
+        add("INTERCOMPANY LOAN REPAYMENT", "subsection", indent=1)
+        for det in repayment_dets:
+            add(det, "leaf", _pull_pred(_is_intercompany_repayment, det), indent=2)
+        add("TOTAL INTERCOMPANY LOAN REPAYMENT", "subtotal_section",
+            _pull_pred(_is_intercompany_repayment), indent=1)
         add("", "blank")
 
+    # 2. INTERCOMPANY LOAN RECEIVABLE (placed right below Repayment as requested)
+    receivable_dets = sorted({d for (p, c, s, d), v in agg.items()
+                              if _is_intercompany_receivable(c, d) and d})
+    if receivable_dets:
+        add("INTERCOMPANY LOAN RECEIVABLE", "subsection", indent=1)
+        for det in receivable_dets:
+            add(det, "leaf", _pull_pred(_is_intercompany_receivable, det), indent=2)
+        add("TOTAL INTERCOMPANY LOAN RECEIVABLE", "subtotal_section",
+            _pull_pred(_is_intercompany_receivable), indent=1)
+        add("", "blank")
+
+    # 3. BANK LOAN REPAYMENT
     bank_loans_present = sorted({d for (p, c, s, d), v in agg.items()
                                  if _is_bank_loan(c, d) and d})
     if bank_loans_present:

@@ -19,13 +19,17 @@ OUTFLOW_BUCKETS_ID = {
     "Outflow - Direct Expense": ("OPEX - Direct Expense (Production)", 3),
     "Outflow - Loan": ("Loans (Bank & Intercompany)", 4),
     "Outflow - Bank Loan": ("Bank Loan Repayment", 4),
-    "Outflow - Intercompany Loan": ("Intercompany Loans", 4),
-    "Outflow - Inter Company Loan": ("Intercompany Loans", 4),
-    "Outflow - Inter-Company Loan": ("Intercompany Loans", 4),
-    "Outflow - Finance Cost": ("Bank Charges & Interest", 5),
-    "Outflow - Imprest Fund": ("Imprest Fund / Petty Cash", 6),
-    "Outflow - Cash Advance": ("Cash Advance", 7),
-    "Outflow - Bank Guarantee": ("Bank Guarantee", 8),
+    "Outflow - Intercompany Loan": ("Intercompany Loan Repayment", 4),
+    "Outflow - Intercompany Loan Repayment": ("Intercompany Loan Repayment", 4),
+    "Outflow - Inter Company Loan": ("Intercompany Loan Repayment", 4),
+    "Outflow - Inter-Company Loan": ("Intercompany Loan Repayment", 4),
+    "Outflow - Intercompany Loan Receivable": ("Intercompany Loan Receivable", 5),
+    "Outflow - Intercompany Loan Given": ("Intercompany Loan Receivable", 5),
+    "Outflow - Loan Receivable": ("Intercompany Loan Receivable", 5),
+    "Outflow - Finance Cost": ("Bank Charges & Interest", 6),
+    "Outflow - Imprest Fund": ("Imprest Fund / Petty Cash", 7),
+    "Outflow - Cash Advance": ("Cash Advance", 8),
+    "Outflow - Bank Guarantee": ("Bank Guarantee", 9),
 }
 
 
@@ -37,12 +41,15 @@ def _bucket_for_category(cat):
     if not cat or not cat.startswith("Outflow"):
         return (cat or "Other", 99)
     cl = cat.lower()
+    # Receivable / Given (loans we gave to others) - separate from repayment
+    if "loan" in cl and ("receivable" in cl or "given" in cl):
+        return ("Intercompany Loan Receivable", 5)
     if "loan" in cl and ("bank" in cl or "term" in cl):
         return ("Bank Loan Repayment", 4)
     if "loan" in cl and ("intercompany" in cl or "inter-company" in cl
                          or "inter company" in cl or "intra" in cl
                          or "antar" in cl):
-        return ("Intercompany Loans", 4)
+        return ("Intercompany Loan Repayment", 4)
     return (cat.replace("Outflow - ", ""), 99)
 
 
