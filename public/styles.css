@@ -15,23 +15,32 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
 button,select,input{font-family:inherit}
 
 /* Header */
-header{background:linear-gradient(125deg,var(--brand) 0%,var(--brand2) 100%);
+header{background:linear-gradient(120deg,#0e1f44 0%,#1f3864 40%,#1e6f8a 100%);
   color:#fff;box-shadow:var(--shadow)}
-.header-inner{max-width:1500px;margin:0 auto;padding:18px 28px;
-  display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}
-header h1{margin:0;font-size:20px;font-weight:700;letter-spacing:.2px}
-header .sub{opacity:.85;font-size:13px;margin-top:3px}
-.header-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
-.stamp{font-size:12px;opacity:.85}
-.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.ctrl{display:flex;align-items:center;gap:6px;font-size:12px}
-.ctrl select{padding:4px 8px;border:0;border-radius:6px;background:rgba(255,255,255,.18);
-  color:#fff;font-weight:600;cursor:pointer}
-.ctrl select option{color:#000}
-.btn-grp{display:inline-flex;background:rgba(255,255,255,.15);border-radius:8px;padding:3px}
-.btn-grp button{background:transparent;color:#fff;border:0;padding:5px 11px;
-  border-radius:6px;cursor:pointer;font-weight:600;font-size:12px}
+.header-inner{max-width:1500px;margin:0 auto;padding:22px 28px 24px}
+.header-top{display:flex;justify-content:space-between;align-items:center;
+  gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.company-pill{display:inline-block;background:rgba(0,0,0,.28);color:#fff;
+  padding:6px 14px;border-radius:18px;font-size:11.5px;font-weight:700;
+  letter-spacing:.6px;text-transform:uppercase}
+.header-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dashboard-title{margin:0;font-size:26px;font-weight:700;letter-spacing:.2px;
+  line-height:1.2}
+.title-sep{opacity:.5;font-weight:400;margin:0 4px}
+.title-light{font-weight:400;opacity:.92}
+.header-sub{font-size:13px;opacity:.9;margin-top:8px}
+.rate-note{font-size:12px;font-style:italic;opacity:.78;margin-top:3px;
+  display:none}
+.rate-note.show{display:block}
+.stamp{display:inline}
+.btn-grp{display:inline-flex;background:rgba(255,255,255,.14);border-radius:22px;
+  padding:4px;gap:2px}
+.btn-grp button{background:transparent;color:#fff;border:0;padding:6px 14px;
+  border-radius:18px;cursor:pointer;font-weight:600;font-size:12.5px;
+  display:inline-flex;align-items:center;gap:4px;transition:all .12s}
+.btn-grp button:hover:not(.active){background:rgba(255,255,255,.10)}
 .btn-grp button.active{background:#fff;color:var(--brand)}
+.btn-grp button .cur-sym{font-weight:700}
 
 /* Layout */
 .container{max-width:1500px;margin:0 auto;padding:24px 28px 60px}

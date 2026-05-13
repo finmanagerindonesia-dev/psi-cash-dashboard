@@ -14,15 +14,42 @@ call :LOG "  %DATE% %TIME%"
 call :LOG "===================================================="
 call :LOG ""
 
-REM --- 1. Detect Python ---
+REM --- 1. Detect Python (verify it actually works, not just stub) ---
 set "PY="
-where python >nul 2>nul && set "PY=python"
-if not defined PY ( where py >nul 2>nul && set "PY=py -3" )
-if not defined PY ( where python3 >nul 2>nul && set "PY=python3" )
+REM Try `python` first - but verify it's not the Microsoft Store stub
+where python >nul 2>nul
+if not errorlevel 1 (
+    python -c "import sys; sys.exit(0)" >nul 2>nul
+    if not errorlevel 1 set "PY=python"
+)
+REM Fallback to `py` (Python Launcher, bypasses MS Store stub)
+if not defined PY (
+    where py >nul 2>nul
+    if not errorlevel 1 (
+        py -3 -c "import sys; sys.exit(0)" >nul 2>nul
+        if not errorlevel 1 set "PY=py -3"
+    )
+)
+REM Last resort: python3
+if not defined PY (
+    where python3 >nul 2>nul
+    if not errorlevel 1 (
+        python3 -c "import sys; sys.exit(0)" >nul 2>nul
+        if not errorlevel 1 set "PY=python3"
+    )
+)
 
 if not defined PY (
-    call :LOG "[ERROR] Python tidak ditemukan di PATH."
-    call :LOG "Reinstall Python dan centang 'Add Python to PATH'."
+    call :LOG "[ERROR] Python tidak ditemukan / tidak bisa dijalankan."
+    call :LOG ""
+    call :LOG "Penyebab umum: Microsoft Store stub mengintercept command 'python'."
+    call :LOG "Solusi:"
+    call :LOG "  1. Buka Settings - Apps - Advanced app settings"
+    call :LOG "     - App execution aliases"
+    call :LOG "  2. Matikan toggle 'python.exe' dan 'python3.exe'"
+    call :LOG "  3. Tutup Command Prompt, buka baru"
+    call :LOG "  4. Ketik 'python --version' untuk verify"
+    call :LOG "  5. Klik refresh.bat lagi"
     goto :ERROR_END
 )
 

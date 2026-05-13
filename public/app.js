@@ -1,9 +1,9 @@
 // PSI Cash Flow Dashboard - app logic
 
 const FORMATS = {
-  IDR:{label:"Rp", div:1, decimals:0, hint:"Rupiah"},
+  IDR:{label:"Rp",  div:1,     decimals:0, hint:"Rupiah"},
   USD:{label:"US$", div:17000, decimals:0, hint:"US Dollar"},
-  INR:{label:"Rs", div:189, decimals:0, hint:"Indian Rupee"},
+  INR:{label:"₹",   div:189,   decimals:0, hint:"Indian Rupee (Lakh/Crore)"},
 };
 let CUR = localStorage.getItem("psi_cur") || "IDR";
 let DATA = null;
@@ -18,9 +18,27 @@ function fmtDate(d){
 }
 function fmt(n, cur){
   if(n===null||n===undefined||isNaN(n)) return "-";
-  const f = FORMATS[cur||CUR];
+  const c = cur || CUR;
+  const f = FORMATS[c];
   const v = (n / f.div);
-  if(Math.abs(v) < 0.005) return "-";
+  if(Math.abs(v) < 0.5) return "-";
+  // INR uses Indian Lakh / Crore for large values
+  if(c === "INR"){
+    const a = Math.abs(v);
+    if(a >= 1e7){
+      const cr = v / 1e7;
+      const s = cr.toLocaleString("en-US",{maximumFractionDigits:2,minimumFractionDigits:2});
+      return v < 0 ? `(${s.replace("-","")}) Cr` : `${s} Cr`;
+    }
+    if(a >= 1e5){
+      const lk = v / 1e5;
+      const s = lk.toLocaleString("en-US",{maximumFractionDigits:2,minimumFractionDigits:2});
+      return v < 0 ? `(${s.replace("-","")}) Lakh` : `${s} Lakh`;
+    }
+    const s = v.toLocaleString("en-US",{maximumFractionDigits:0,minimumFractionDigits:0});
+    return v < 0 ? `(${s.replace("-","")})` : s;
+  }
+  // IDR / USD
   const s = v.toLocaleString("en-US",{maximumFractionDigits:f.decimals,minimumFractionDigits:f.decimals});
   return v < 0 ? `(${s.replace("-","")})` : s;
 }
@@ -31,12 +49,21 @@ function fmtBig(n, cur){
 }
 function fmtCompact(n, cur){
   if(n===null||n===undefined||isNaN(n)) return "-";
-  const f = FORMATS[cur||CUR];
+  const c = cur || CUR;
+  const f = FORMATS[c];
   const v = Math.abs(n / f.div);
-  let s; if(v>=1e9) s=(v/1e9).toFixed(2)+"B";
-  else if(v>=1e6) s=(v/1e6).toFixed(1)+"M";
-  else if(v>=1e3) s=(v/1e3).toFixed(0)+"K";
-  else s=v.toFixed(0);
+  let s;
+  if(c === "INR"){
+    if(v >= 1e7) s = (v/1e7).toFixed(1) + " Cr";
+    else if(v >= 1e5) s = (v/1e5).toFixed(1) + " L";
+    else if(v >= 1e3) s = (v/1e3).toFixed(0) + "K";
+    else s = v.toFixed(0);
+  } else {
+    if(v>=1e9) s=(v/1e9).toFixed(2)+"B";
+    else if(v>=1e6) s=(v/1e6).toFixed(1)+"M";
+    else if(v>=1e3) s=(v/1e3).toFixed(0)+"K";
+    else s=v.toFixed(0);
+  }
   return (n<0?"-":"")+s;
 }
 function escapeHtml(s){
@@ -132,14 +159,33 @@ function logout(){
 }
 
 // ----- Load -----
+function updateRateNote(){
+  const note = document.getElementById("rateNote");
+  if(!note) return;
+  if(CUR === "USD"){
+    note.textContent = "Conversion rate: 1 USD = Rp 17,000 (fixed)";
+    note.classList.add("show");
+  } else if(CUR === "INR"){
+    note.textContent = "Conversion rate: 1 INR = Rp 189 (fixed). Values shown in Lakh / Crore.";
+    note.classList.add("show");
+  } else {
+    note.textContent = "";
+    note.classList.remove("show");
+  }
+}
+
 function applyData(d){
   DATA = d;
   if(!SELECTED_PERIOD){
     SELECTED_PERIOD = d.periods[d.periods.length-1].key;
   }
-  document.getElementById("company").textContent = d.company;
+  document.getElementById("company").textContent = (d.company || "").toUpperCase();
+  const dt = new Date(d.generated_at);
+  const ds = dt.toLocaleString("en-US", {weekday:"long", day:"numeric",
+                month:"long", year:"numeric", hour:"2-digit", minute:"2-digit"});
   document.getElementById("stamp").textContent =
-    "Last updated: " + new Date(d.generated_at).toLocaleString("en-US");
+    "Data as of " + ds + " | Source: PSI Cash Monitoring Master.xlsx";
+  updateRateNote();
   populatePeriodSelect();
   render();
   if(window._PSI_ENCRYPTED){
@@ -759,6 +805,7 @@ document.getElementById("curgrp").addEventListener("click", (e)=>{
   CUR = b.dataset.cur;
   localStorage.setItem("psi_cur", CUR);
   document.querySelectorAll("#curgrp button").forEach(x=>x.classList.toggle("active", x.dataset.cur===CUR));
+  updateRateNote();
   if(DATA) render();
 });
 document.querySelectorAll("#curgrp button").forEach(x=>x.classList.toggle("active", x.dataset.cur===CUR));

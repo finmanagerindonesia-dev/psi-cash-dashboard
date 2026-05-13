@@ -29,21 +29,22 @@
 
 <header>
   <div class="header-inner">
-    <div>
-      <h1 id="company">PT Prasad Seeds Indonesia</h1>
-      <div class="sub">Cash Flow Dashboard - Auto-generated from Treasury workbook</div>
-    </div>
-    <div class="header-right">
-      <div class="stamp" id="stamp">Loading data...</div>
-      <div class="controls">
+    <div class="header-top">
+      <span class="company-pill" id="company">PT PRASAD SEEDS INDONESIA</span>
+      <div class="header-controls">
         <div class="btn-grp" id="curgrp">
-          <button class="active" data-cur="IDR">IDR</button>
-          <button data-cur="USD">USD</button>
-          <button data-cur="INR">INR</button>
+          <button class="active" data-cur="IDR"><span class="cur-sym">Rp</span> IDR</button>
+          <button data-cur="USD"><span class="cur-sym">$</span> USD</button>
+          <button data-cur="INR"><span class="cur-sym">₹</span> INR</button>
         </div>
         <button id="logoutBtn" class="logout-btn hidden" title="Log out">Logout</button>
       </div>
     </div>
+    <h1 class="dashboard-title">Cash Flow Dashboard <span class="title-sep">—</span> <span class="title-light">Daily &amp; Monthly Monitoring</span></h1>
+    <div class="header-sub">
+      <span id="stamp">Loading data...</span>
+    </div>
+    <div class="rate-note" id="rateNote"></div>
   </div>
 </header>
 
