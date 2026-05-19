@@ -10,6 +10,44 @@ let DATA = null;
 let SELECTED_PERIOD = null;
 let TAB = localStorage.getItem("psi_tab") || "monthly";
 let CHARTS = {};
+let PERIOD_START = localStorage.getItem("psi_pstart") || null;
+let PERIOD_END = localStorage.getItem("psi_pend") || null;
+
+// ---- Category label maps (mirror Python lib_dashboard.py) ----
+const INCOMING_LABELS_MAP = {
+  "Incoming - Customers": "Customer Receipts",
+  "Incoming - Bank Loan": "Bank Loan Drawdown",
+  "Incoming - Others": "Other Receipts",
+};
+const OUTFLOW_BUCKETS_MAP = {
+  "Outflow - CAPEX": "CAPEX (Capital Expenditure)",
+  "Outflow - Indirect Expense": "OPEX - Indirect Expense",
+  "Outflow - Direct Expense": "OPEX - Direct Expense (Production)",
+  "Outflow - Loan": "Loans (Bank & Intercompany)",
+  "Outflow - Bank Loan": "Bank Loan Repayment",
+  "Outflow - Intercompany Loan": "Intercompany Loan Repayment",
+  "Outflow - Intercompany Loan Repayment": "Intercompany Loan Repayment",
+  "Outflow - Intercompany Loan Receivable": "Intercompany Loan Receivable",
+  "Outflow - Intercompany Loan Given": "Intercompany Loan Receivable",
+  "Outflow - Loan Receivable": "Intercompany Loan Receivable",
+  "Outflow - Finance Cost": "Bank Charges & Interest",
+  "Outflow - Imprest Fund": "Imprest Fund / Petty Cash",
+  "Outflow - Cash Advance": "Cash Advance",
+  "Outflow - Bank Guarantee": "Bank Guarantee",
+};
+function bucketForCategory(cat){
+  if (cat in OUTFLOW_BUCKETS_MAP) return OUTFLOW_BUCKETS_MAP[cat];
+  if (!cat || !cat.startsWith("Outflow")) return cat || "Other";
+  const cl = cat.toLowerCase();
+  if (cl.includes("loan") && (cl.includes("receivable") || cl.includes("given")))
+    return "Intercompany Loan Receivable";
+  if (cl.includes("loan") && (cl.includes("bank") || cl.includes("term")))
+    return "Bank Loan Repayment";
+  if (cl.includes("loan") && (cl.includes("intercompany") || cl.includes("inter-company")
+        || cl.includes("inter company") || cl.includes("intra") || cl.includes("antar")))
+    return "Intercompany Loan Repayment";
+  return cat.replace("Outflow - ", "");
+}
 
 function fmtDate(d){
   if(!d) return "-";
@@ -225,7 +263,7 @@ function render(){
     asof ? `Data as of: <b>${fmtDate(asof)}</b>` : "";
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.tab === TAB));
-  // Show month bar only on Monthly View
+  // Show month bar only on Monthly View (hidden on Daily + Period Review)
   const monthBar = document.getElementById("monthBar");
   if(monthBar) monthBar.classList.toggle("hidden", TAB !== "monthly");
   if(TAB === "daily") {
@@ -234,6 +272,8 @@ function render(){
     r.appendChild(renderWeeklyView());
     r.appendChild(renderDailyPositionChart());
     r.appendChild(renderDailyInOutChart());
+  } else if(TAB === "period") {
+    renderPeriodReview(r);
   } else {
     r.appendChild(renderKPIs());
     r.appendChild(renderRow2());
@@ -473,6 +513,351 @@ function renderDailyInOutChart(){
       }
     });
   },10);
+  return card;
+}
+
+// =============================================================================
+// PERIOD REVIEW (custom date range)
+// =============================================================================
+function renderPeriodReview(root){
+  const allDates = (DATA.daily && DATA.daily.dates) || [];
+  if(!allDates.length){
+    root.appendChild(el(`<div class="card"><div class="empty">No transaction data available.</div></div>`));
+    return;
+  }
+  const minDate = allDates[0];
+  const maxDate = allDates[allDates.length-1];
+  if(!PERIOD_START || PERIOD_START < minDate || PERIOD_START > maxDate){
+    // Default start = first day of as_of's month
+    const asof = DATA.daily.as_of;
+    PERIOD_START = asof.slice(0,7) + "-01";
+    if(PERIOD_START < minDate) PERIOD_START = minDate;
+  }
+  if(!PERIOD_END || PERIOD_END < minDate || PERIOD_END > maxDate){
+    PERIOD_END = maxDate;
+  }
+  // Make sure start <= end
+  if(PERIOD_START > PERIOD_END){
+    const tmp = PERIOD_START; PERIOD_START = PERIOD_END; PERIOD_END = tmp;
+  }
+  savePeriodChoice();
+
+  // Picker
+  const picker = el(`<div class="period-picker">
+    <span class="pp-label">Select Period:</span>
+    <div class="pp-field"><label>From:</label>
+      <input type="date" id="ppStart" min="${minDate}" max="${maxDate}" value="${PERIOD_START}">
+    </div>
+    <div class="pp-field"><label>To:</label>
+      <input type="date" id="ppEnd" min="${minDate}" max="${maxDate}" value="${PERIOD_END}">
+    </div>
+    <div class="pp-quick">
+      <button data-quick="mtd">MTD</button>
+      <button data-quick="ytd">YTD</button>
+      <button data-quick="last-month">Last Month</button>
+      <button data-quick="last-quarter">Last 3 Months</button>
+      <button data-quick="all">All Data</button>
+    </div>
+    <div class="pp-summary">
+      Showing data from <b>${fmtDate(PERIOD_START)}</b> to <b>${fmtDate(PERIOD_END)}</b>.
+      Cash position is calculated as the running balance at the end date.
+    </div>
+  </div>`);
+  root.appendChild(picker);
+
+  // Hook up date pickers
+  const onChange = () => {
+    PERIOD_START = picker.querySelector("#ppStart").value || PERIOD_START;
+    PERIOD_END = picker.querySelector("#ppEnd").value || PERIOD_END;
+    if(PERIOD_START > PERIOD_END){
+      const tmp = PERIOD_START; PERIOD_START = PERIOD_END; PERIOD_END = tmp;
+    }
+    savePeriodChoice();
+    render();
+  };
+  picker.querySelector("#ppStart").addEventListener("change", onChange);
+  picker.querySelector("#ppEnd").addEventListener("change", onChange);
+  picker.querySelectorAll(".pp-quick button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      applyQuickPeriod(btn.dataset.quick, minDate, maxDate);
+      savePeriodChoice();
+      render();
+    });
+  });
+
+  // KPIs + drill-downs
+  root.appendChild(renderPeriodKPIs(PERIOD_START, PERIOD_END));
+  const row2 = el(`<div class="row2"></div>`);
+  row2.appendChild(renderPeriodIncoming(PERIOD_START, PERIOD_END));
+  row2.appendChild(renderPeriodOutflow(PERIOD_START, PERIOD_END));
+  root.appendChild(row2);
+}
+
+function savePeriodChoice(){
+  if(PERIOD_START) localStorage.setItem("psi_pstart", PERIOD_START);
+  if(PERIOD_END) localStorage.setItem("psi_pend", PERIOD_END);
+}
+
+function applyQuickPeriod(quick, minDate, maxDate){
+  const asof = DATA.daily.as_of;
+  const asofD = new Date(asof + "T00:00:00");
+  if(quick === "mtd"){
+    PERIOD_START = asof.slice(0,7) + "-01";
+    PERIOD_END = asof;
+  } else if(quick === "ytd"){
+    PERIOD_START = asof.slice(0,4) + "-01-01";
+    PERIOD_END = asof;
+  } else if(quick === "last-month"){
+    const d = new Date(asofD); d.setDate(1); d.setMonth(d.getMonth()-1);
+    const yy = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,"0");
+    const lastDay = new Date(yy, d.getMonth()+1, 0).getDate();
+    PERIOD_START = `${yy}-${mm}-01`;
+    PERIOD_END = `${yy}-${mm}-${String(lastDay).padStart(2,"0")}`;
+  } else if(quick === "last-quarter"){
+    const d = new Date(asofD); d.setMonth(d.getMonth()-2); d.setDate(1);
+    const yy = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,"0");
+    PERIOD_START = `${yy}-${mm}-01`;
+    PERIOD_END = asof;
+  } else if(quick === "all"){
+    PERIOD_START = minDate;
+    PERIOD_END = maxDate;
+  }
+  // Clamp to data range
+  if(PERIOD_START < minDate) PERIOD_START = minDate;
+  if(PERIOD_END > maxDate) PERIOD_END = maxDate;
+}
+
+function cashPositionAtDate(targetDate){
+  // Use nearest <= targetDate in daily.dates
+  const dates = DATA.daily.dates;
+  let valid = null;
+  for(let i = dates.length-1; i >= 0; i--){
+    if(dates[i] <= targetDate){ valid = dates[i]; break; }
+  }
+  if(!valid) return {total: 0, usdTotal: 0, perBank: {}, perBankUsd: {}};
+  let total = 0, usdTotal = 0;
+  const perBank = {}, perBankUsd = {};
+  for(const b of DATA.daily.banks){
+    const v = DATA.daily.bank_position[b][valid] || 0;
+    total += v;
+    perBank[b] = v;
+    if(DATA.daily.bank_position_usd && DATA.daily.bank_position_usd[b]){
+      const u = DATA.daily.bank_position_usd[b][valid];
+      if(u !== undefined && u !== null){
+        usdTotal += u;
+        perBankUsd[b] = u;
+      } else {
+        usdTotal += v / 17000;
+      }
+    } else {
+      usdTotal += v / 17000;
+    }
+  }
+  return {total, usdTotal, perBank, perBankUsd, atDate: valid};
+}
+
+function inflowOutflowInRange(start, end){
+  let inflow = 0, outflow = 0, txCount = 0;
+  for(const io of DATA.daily.inout){
+    if(io.date >= start && io.date <= end){
+      inflow += io.inflow;
+      outflow += io.outflow;
+    }
+  }
+  for(const t of (DATA.transactions || [])){
+    if(t.d >= start && t.d <= end) txCount++;
+  }
+  return {inflow, outflow, net: inflow + outflow, txCount};
+}
+
+function renderPeriodKPIs(start, end){
+  const cashPos = cashPositionAtDate(end);
+  const io = inflowOutflowInRange(start, end);
+  const div = el(`<div class="kpi-row"></div>`);
+  const endLbl = fmtDate(end);
+  const cashStr = (CUR === "USD")
+    ? fmtTotalCash(cashPos.total, cashPos.usdTotal)
+    : fmtBig(cashPos.total);
+  div.appendChild(el(`<div class="kpi pos">
+    <div class="lbl">Cash Position - As of ${endLbl}</div>
+    <div class="val">${cashStr}</div>
+    <div class="sub">Running balance at end-date across all banks</div></div>`));
+  div.appendChild(el(`<div class="kpi pos">
+    <div class="lbl">Total Inflow (period)</div>
+    <div class="val">${fmtBig(io.inflow)}</div>
+    <div class="sub">${fmtDate(start)} → ${endLbl}</div></div>`));
+  div.appendChild(el(`<div class="kpi neg">
+    <div class="lbl">Total Outflow (period)</div>
+    <div class="val">${fmtBig(io.outflow)}</div>
+    <div class="sub">${io.txCount} transactions</div></div>`));
+  const netCls = io.net >= 0 ? "pos" : "neg";
+  div.appendChild(el(`<div class="kpi ${netCls}">
+    <div class="lbl">Net (Inflow - Outflow)</div>
+    <div class="val">${fmtBig(io.net)}</div>
+    <div class="sub">${io.net >= 0 ? "Surplus for this period" : "Deficit for this period"}</div></div>`));
+  return div;
+}
+
+function aggregateIncomingDrill(start, end){
+  const groups = {};
+  for(const t of (DATA.transactions || [])){
+    if(t.d < start || t.d > end) continue;
+    if(t.c !== "Incoming") continue;
+    const det = t.dt || "Other";
+    const label = INCOMING_LABELS_MAP[det] || det || "Other";
+    if(!groups[label]) groups[label] = {amount: 0, parties: {}};
+    groups[label].amount += t.a;
+    const p = t.p || "(no name)";
+    groups[label].parties[p] = (groups[label].parties[p] || 0) + t.a;
+  }
+  const total = Object.values(groups).reduce((a, g) => a + g.amount, 0);
+  const sorted = Object.entries(groups).sort((a, b) => b[1].amount - a[1].amount);
+  return {
+    total,
+    groups: sorted.map(([label, data]) => ({
+      label,
+      amount: data.amount,
+      pct: total ? (data.amount / total * 100) : 0,
+      parties: Object.entries(data.parties)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 25)
+        .map(([p, a]) => ({label: p, amount: a})),
+      party_count: Object.keys(data.parties).length,
+    })),
+  };
+}
+
+function aggregateOutflowDrill(start, end){
+  const buckets = {};
+  for(const t of (DATA.transactions || [])){
+    if(t.d < start || t.d > end) continue;
+    if(!t.c || !t.c.startsWith("Outflow")) continue;
+    const blabel = bucketForCategory(t.c);
+    let sub;
+    if(t.c === "Outflow - Indirect Expense"){
+      sub = t.s || "Other";
+    } else if(t.c === "Outflow - Direct Expense"){
+      sub = (t.s && t.s !== "Direct Expense") ? t.s : (t.dt || "Other");
+    } else if(t.c === "Outflow - Finance Cost"){
+      sub = (t.s && t.s !== "Finance Cost") ? t.s : (t.dt || "Other");
+    } else {
+      sub = t.dt || t.s || "Other";
+    }
+    if(!buckets[blabel]) buckets[blabel] = {amount: 0, subs: {}};
+    if(!buckets[blabel].subs[sub]) buckets[blabel].subs[sub] = {amount: 0, parties: {}};
+    buckets[blabel].amount += t.a;
+    buckets[blabel].subs[sub].amount += t.a;
+    const p = t.p || "(no name)";
+    buckets[blabel].subs[sub].parties[p] = (buckets[blabel].subs[sub].parties[p] || 0) + t.a;
+  }
+  const total = Object.values(buckets).reduce((a, b) => a + b.amount, 0);
+  const sorted = Object.entries(buckets).sort((a, b) => a[1].amount - b[1].amount);
+  return {
+    total,
+    buckets: sorted.map(([blabel, bdata]) => {
+      const subSorted = Object.entries(bdata.subs).sort((a, b) => a[1].amount - b[1].amount);
+      return {
+        label: blabel,
+        amount: bdata.amount,
+        pct: total ? (Math.abs(bdata.amount) / Math.abs(total) * 100) : 0,
+        subgroups: subSorted.map(([slabel, sdata]) => ({
+          label: slabel,
+          amount: sdata.amount,
+          parties: Object.entries(sdata.parties)
+            .sort((a, b) => a[1] - b[1])
+            .slice(0, 20)
+            .map(([p, a]) => ({label: p, amount: a})),
+          party_count: Object.keys(sdata.parties).length,
+        })),
+      };
+    }),
+  };
+}
+
+function renderPeriodIncoming(start, end){
+  const data = aggregateIncomingDrill(start, end);
+  const card = el(`<div class="card">
+    <h2>Where Did the Money Come From? <span class="pill">${fmtDate(start)} → ${fmtDate(end)}</span></h2>
+    <div class="body" id="periodIncBody"></div></div>`);
+  if(!data.groups.length){
+    card.querySelector("#periodIncBody").innerHTML = `<div class="empty">No inflow in this period.</div>`;
+    return card;
+  }
+  const max = Math.max(...data.groups.map(g => Math.abs(g.amount)));
+  const groups = data.groups.map((g, i) => {
+    const partyRows = g.parties.map(p => `
+      <div class="party pos">
+        <span class="pname" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</span>
+        <span class="pbar"><i style="width:${(Math.abs(p.amount)/Math.abs(g.amount)*100).toFixed(1)}%"></i></span>
+        <span class="pamt">${fmtBig(p.amount)}</span>
+      </div>`).join("");
+    return `
+    <div class="fgroup" data-i="${i}">
+      <div class="fhead" onclick="toggleFGroup(this.parentElement)">
+        <div class="arrow">&#9656;</div>
+        <div class="fname">${escapeHtml(g.label)} <span class="fpct">${g.pct.toFixed(1)}%</span></div>
+        <div class="famt amount pos">${fmtBig(g.amount)}</div>
+      </div>
+      <div class="fbar-wrap"><div class="fbar pos"><i style="width:${(Math.abs(g.amount)/max*100).toFixed(1)}%"></i></div></div>
+      <div class="fbody">
+        <div class="muted" style="margin-bottom:6px;font-size:11.5px">${g.party_count} parties (top ${g.parties.length}):</div>
+        ${partyRows || '<div class="muted">No detail.</div>'}
+      </div>
+    </div>`;
+  }).join("");
+  card.querySelector("#periodIncBody").innerHTML = `
+    <div class="flow">${groups}</div>
+    <div style="margin-top:14px;padding:12px 16px;background:var(--pos-bg);border-radius:9px;font-weight:700;color:var(--pos);display:flex;justify-content:space-between">
+      <span>TOTAL INFLOW</span><span>${fmtBig(data.total)}</span>
+    </div>`;
+  return card;
+}
+
+function renderPeriodOutflow(start, end){
+  const data = aggregateOutflowDrill(start, end);
+  const card = el(`<div class="card">
+    <h2>Where Did the Money Go? <span class="pill">${fmtDate(start)} → ${fmtDate(end)}</span></h2>
+    <div class="body" id="periodOutBody"></div></div>`);
+  if(!data.buckets.length){
+    card.querySelector("#periodOutBody").innerHTML = `<div class="empty">No outflow in this period.</div>`;
+    return card;
+  }
+  const maxBucket = Math.max(...data.buckets.map(b => Math.abs(b.amount)));
+  const buckets = data.buckets.map((b, bi) => {
+    const subItems = b.subgroups.map((s, si) => {
+      const maxParty = s.parties[0] ? Math.abs(s.parties[0].amount) : 1;
+      const partyRows = s.parties.map(p => `
+        <div class="party neg">
+          <span class="pname" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</span>
+          <span class="pbar"><i style="width:${(Math.abs(p.amount)/maxParty*100).toFixed(1)}%"></i></span>
+          <span class="pamt">${fmtBig(p.amount)}</span>
+        </div>`).join("");
+      return `
+      <div class="subgroup" data-si="${si}">
+        <div class="shead" onclick="toggleSub(this.parentElement)">
+          <span class="arrow">&#9656;</span>
+          <span class="sname">${escapeHtml(s.label)}<span class="scount">(${s.party_count} parties)</span></span>
+          <span class="samt amount neg">${fmtBig(s.amount)}</span>
+        </div>
+        <div class="parties">${partyRows || '<div class="muted">No detail.</div>'}</div>
+      </div>`;
+    }).join("");
+    return `
+    <div class="fgroup" data-bi="${bi}">
+      <div class="fhead" onclick="toggleFGroup(this.parentElement)">
+        <div class="arrow">&#9656;</div>
+        <div class="fname">${escapeHtml(b.label)} <span class="fpct">${b.pct.toFixed(1)}%</span></div>
+        <div class="famt amount neg">${fmtBig(b.amount)}</div>
+      </div>
+      <div class="fbar-wrap"><div class="fbar neg"><i style="width:${(Math.abs(b.amount)/maxBucket*100).toFixed(1)}%"></i></div></div>
+      <div class="fbody">${subItems}</div>
+    </div>`;
+  }).join("");
+  card.querySelector("#periodOutBody").innerHTML = `
+    <div class="flow">${buckets}</div>
+    <div style="margin-top:14px;padding:12px 16px;background:var(--neg-bg);border-radius:9px;font-weight:700;color:var(--neg);display:flex;justify-content:space-between">
+      <span>TOTAL OUTFLOW</span><span>${fmtBig(data.total)}</span>
+    </div>`;
   return card;
 }
 

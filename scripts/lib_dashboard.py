@@ -163,6 +163,7 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
     daily = _build_daily_view(rows, periods)
     bank_currencies = _bank_currencies(rows)
     monthly_fx_rates = _compute_monthly_fx_rates(rows, periods)
+    transactions = _build_transactions(rows)
 
     # Override trend.ending using bp_matrix.totals so it reflects the
     # cumulative carry-forward (correct even if Beginning Balance entries
@@ -195,7 +196,30 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
         "daily": daily,
         "bank_currencies": bank_currencies,
         "monthly_fx_rates": monthly_fx_rates,
+        "transactions": transactions,
     }
+
+
+def _build_transactions(rows):
+    """Compact list of non-Beginning-Balance transactions for client-side
+    period-range filtering. Short keys to reduce JSON size."""
+    out = []
+    for r in rows:
+        if r.get("category") == "Beginning Balance":
+            continue
+        if not r.get("date"):
+            continue
+        d = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])
+        out.append({
+            "d": d,
+            "b": r.get("bank") or "",
+            "c": r.get("category") or "",
+            "s": r.get("sub_category") or "",
+            "dt": r.get("detail_category") or "",
+            "p": r.get("parties") or "",
+            "a": r.get("amount", 0),
+        })
+    return out
 
 
 def _compute_monthly_fx_rates(rows, periods):
