@@ -278,8 +278,6 @@ function render(){
     r.appendChild(renderKPIs());
     r.appendChild(renderRow2());
     r.appendChild(renderBankMatrix());
-    const fx = renderFXRates();
-    if(fx) r.appendChild(fx);
     r.appendChild(renderTrend());
     r.appendChild(renderCFSummary());
   }
