@@ -277,6 +277,7 @@ function render(){
   } else {
     r.appendChild(renderKPIs());
     r.appendChild(renderRow2());
+    r.appendChild(renderBoardAnalysis());
     r.appendChild(renderBankMatrix());
     r.appendChild(renderTrend());
     r.appendChild(renderCFSummary());
@@ -1064,6 +1065,180 @@ function renderBankMatrix(){
       <tbody>${rows}</tbody>
       <tfoot><tr class="total"><td>TOTAL CASH POSITION</td>${totalRow}</tr></tfoot>
     </table>`;
+  return card;
+}
+
+function renderBoardAnalysis(){
+  const D = DATA;
+  const m = D.bank_position_matrix;
+  const p = D.periods.find(x => x.key === SELECTED_PERIOD);
+  if(!p) return el(`<div></div>`);
+
+  // Opening = sum of bank openings; Ending = total
+  let opening = 0;
+  for(const b of m.banks){
+    opening += m.data[b][SELECTED_PERIOD].opening || 0;
+  }
+  const ending = m.totals[SELECTED_PERIOD] || 0;
+
+  // Inflow groups + outflow buckets for this month
+  const inc = D.incoming_drill[SELECTED_PERIOD] || {groups: []};
+  const outDrill = D.outflow_drill[SELECTED_PERIOD] || {buckets: []};
+  const incomingItems = (inc.groups || []).filter(g => Math.abs(g.amount) > 0.5);
+  const outflowItems = (outDrill.buckets || []).filter(b => Math.abs(b.amount) > 0.5);
+
+  // Build waterfall steps
+  const steps = [
+    {label: "Opening", type: "start", value: opening},
+    ...incomingItems.map(g => ({label: g.label, type: "in", value: g.amount})),
+    ...outflowItems.map(b => ({label: b.label, type: "out", value: b.amount})),
+    {label: "Closing", type: "end", value: ending},
+  ];
+
+  // Compute floating bar positions [low, high] for each step
+  let running = 0;
+  const positions = steps.map((s) => {
+    if(s.type === "start"){
+      running = s.value;
+      return {low: Math.min(0, s.value), high: Math.max(0, s.value), change: s.value};
+    }
+    if(s.type === "end"){
+      return {low: Math.min(0, s.value), high: Math.max(0, s.value), change: s.value};
+    }
+    const before = running;
+    const after = running + s.value;
+    running = after;
+    return {low: Math.min(before, after), high: Math.max(before, after), change: s.value};
+  });
+
+  const card = el(`<div class="card">
+    <h2>Board Analysis &mdash; Cash Movement Waterfall
+      <span class="pill">${escapeHtml(p.label_long)}</span>
+    </h2>
+    <div class="legend-mini">
+      <span><i style="background:#1f3864"></i>Opening / Closing</span>
+      <span><i style="background:#0a8754"></i>Inflow</span>
+      <span><i style="background:#c0392b"></i>Outflow</span>
+      <span class="muted" style="margin-left:auto">${steps.length-2} flow steps</span>
+    </div>
+    <div class="body">
+      <div class="chart-wrap tall"><canvas id="ch_waterfall"></canvas></div>
+      <div class="waterfall-summary">
+        <div class="ws-item ws-open">
+          <div class="ws-lbl">Opening</div>
+          <div class="ws-val">${fmtBig(opening)}</div>
+        </div>
+        <div class="ws-item ws-net">
+          <div class="ws-lbl">Net Change</div>
+          <div class="ws-val ${(ending-opening)>=0?'pos':'neg'}">${fmtBig(ending-opening)}</div>
+        </div>
+        <div class="ws-item ws-close">
+          <div class="ws-lbl">Closing</div>
+          <div class="ws-val">${fmtBig(ending)}</div>
+        </div>
+      </div>
+    </div></div>`);
+
+  setTimeout(() => {
+    if(CHARTS.waterfall) CHARTS.waterfall.destroy();
+    const ctx = document.getElementById("ch_waterfall");
+    if(!ctx) return;
+    const div = FORMATS[CUR].div;
+    const colors = steps.map(s =>
+      s.type === 'start' || s.type === 'end' ? 'rgba(31,56,100,.88)' :
+      s.type === 'in' ? 'rgba(10,135,84,.85)' : 'rgba(192,57,43,.85)');
+    const borderColors = steps.map(s =>
+      s.type === 'start' || s.type === 'end' ? '#0e1f44' :
+      s.type === 'in' ? '#0a8754' : '#c0392b');
+
+    // Custom plugin: draw connecting horizontal step lines between bars
+    const connectorPlugin = {
+      id: 'connectorLines',
+      afterDatasetsDraw(chart){
+        const ds = chart.getDatasetMeta(0);
+        if(!ds || !ds.data) return;
+        const c = chart.ctx;
+        c.save();
+        c.strokeStyle = 'rgba(31,56,100,.35)';
+        c.setLineDash([4, 3]);
+        c.lineWidth = 1;
+        for(let i=0; i<positions.length-1; i++){
+          const cur = positions[i];
+          const next = positions[i+1];
+          const b1 = ds.data[i];
+          const b2 = ds.data[i+1];
+          if(!b1 || !b2) continue;
+          // Connect top of current to top of next (the running level)
+          const isCurEnd = steps[i].type === 'start' || steps[i].type === 'end';
+          const isNextEnd = steps[i+1].type === 'start' || steps[i+1].type === 'end';
+          // y-pixel of the running level after current step (= cur.high or low based on direction)
+          const curRunY = chart.scales.y.getPixelForValue(
+            isCurEnd ? cur.high / div : (steps[i].value >= 0 ? cur.high / div : cur.low / div));
+          const x1 = b1.x + b1.width/2;
+          const x2 = b2.x - b2.width/2;
+          c.beginPath();
+          c.moveTo(x1, curRunY);
+          c.lineTo(x2, curRunY);
+          c.stroke();
+        }
+        c.restore();
+      }
+    };
+
+    CHARTS.waterfall = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: steps.map(s => s.label),
+        datasets: [{
+          label: "Cash Flow",
+          data: positions.map(p => [p.low / div, p.high / div]),
+          backgroundColor: colors,
+          borderColor: borderColors,
+          borderWidth: 1.5,
+          borderRadius: 4,
+          barPercentage: 0.78,
+          categoryPercentage: 0.86,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: {display: false},
+          tooltip: {
+            callbacks: {
+              title: (ctx) => steps[ctx[0].dataIndex].label,
+              label: (c) => {
+                const s = steps[c.dataIndex];
+                const pos = positions[c.dataIndex];
+                const fmt = (n) => FORMATS[CUR].label + " " + (n/div).toLocaleString("en-US",{maximumFractionDigits:0});
+                if(s.type === 'start') return ` Opening: ${fmt(s.value)}`;
+                if(s.type === 'end')   return ` Closing: ${fmt(s.value)}`;
+                const sign = s.value >= 0 ? '+' : '';
+                return [
+                  ` ${sign}${fmt(s.value).replace(FORMATS[CUR].label + ' ', FORMATS[CUR].label + ' ')}`,
+                  ` Running total: ${fmt(pos.high * div / div * div)}`.replace(/\*\s*div\s*\/\s*div\s*\*\s*div/, ''),
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: {maxRotation: 50, minRotation: 30, autoSkip: false,
+                    font: {size: 10}, color: '#1a1f36'},
+            grid: {display: false},
+          },
+          y: {
+            ticks: {callback: (v) => fmtCompact(v*div), color: '#6b7280'},
+            grid: {color: 'rgba(31,56,100,.06)'},
+            beginAtZero: false,
+          }
+        }
+      },
+      plugins: [connectorPlugin]
+    });
+  }, 10);
+
   return card;
 }
 

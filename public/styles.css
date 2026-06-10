@@ -236,6 +236,29 @@ table.cf tr.leaf:hover td{background:rgba(31,56,100,.04)}
 .hidden{display:none!important}
 .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
+/* Waterfall summary strip */
+.waterfall-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;
+  margin-top:16px;padding:14px 16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.65),rgba(255,255,255,.35));
+  border-radius:12px;border:1px solid var(--line);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.waterfall-summary .ws-item{text-align:center;padding:6px 4px}
+.waterfall-summary .ws-lbl{font-size:11px;color:var(--muted);font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px}
+.waterfall-summary .ws-val{font-size:16px;font-weight:700;margin-top:4px;
+  font-variant-numeric:tabular-nums;color:var(--brand)}
+.waterfall-summary .ws-val.pos{color:var(--pos)}
+.waterfall-summary .ws-val.neg{color:var(--neg)}
+.waterfall-summary .ws-net{border-left:1px solid var(--line);
+  border-right:1px solid var(--line)}
+@media (max-width:520px){
+  .waterfall-summary{grid-template-columns:1fr;gap:8px;padding:12px}
+  .waterfall-summary .ws-net{border-left:0;border-right:0;
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    padding:8px 4px}
+  .waterfall-summary .ws-val{font-size:15px}
+}
+
 /* FX rate chips */
 .fx-chips{display:flex;flex-wrap:wrap;gap:10px}
 .fx-chip{flex:1 1 110px;min-width:100px;background:rgba(255,255,255,.7);
