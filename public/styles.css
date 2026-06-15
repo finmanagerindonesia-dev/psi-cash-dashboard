@@ -279,26 +279,37 @@ table.cf tr.leaf:hover td{background:rgba(31,56,100,.04)}
 .weekly-summary .amount{font-weight:600}
 
 /* Daily ledger table */
-table.ledger{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+table.ledger{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;
+  background:#fff;border-radius:8px}
 table.ledger th,table.ledger td{padding:8px 12px;border-bottom:1px solid var(--line);
-  white-space:nowrap}
-table.ledger thead th{background:rgba(255,255,255,.85);color:var(--brand);font-weight:700;
+  white-space:nowrap;background:#fff}
+table.ledger thead th{color:var(--brand);font-weight:700;
   font-size:11px;text-transform:uppercase;letter-spacing:.4px;
-  position:sticky;top:0;z-index:1;border-bottom:2px solid var(--line)}
-table.ledger thead th:first-child,table.ledger tbody td:first-child{
-  text-align:left;position:sticky;left:0;background:inherit;z-index:0;font-weight:600}
+  position:sticky;top:0;z-index:2;border-bottom:2px solid var(--line);
+  background:#f7f9fc}
+/* Sticky Date column (first) - SOLID background + shadow */
+table.ledger thead th:first-child{
+  text-align:left;position:sticky;left:0;z-index:4;font-weight:700;
+  background:#f7f9fc;
+  box-shadow:4px 0 8px -4px rgba(31,56,100,.18)}
+table.ledger tbody td:first-child{
+  text-align:left;position:sticky;left:0;z-index:1;font-weight:600;
+  background:#ffffff;
+  box-shadow:4px 0 8px -4px rgba(31,56,100,.18)}
 table.ledger thead th:not(:first-child),table.ledger tbody td:not(:first-child){
   text-align:right;font-variant-numeric:tabular-nums}
-table.ledger tbody tr:nth-child(even) td{background:rgba(31,56,100,.025)}
-table.ledger tbody tr:nth-child(even) td:first-child{background:rgba(31,56,100,.025)}
-table.ledger tbody tr:hover td{background:rgba(31,56,100,.06)}
-table.ledger tbody tr:hover td:first-child{background:rgba(31,56,100,.06)}
-table.ledger tr.row-latest td{background:rgba(255,243,205,.5)!important;font-weight:700;
+/* Zebra striping - SOLID */
+table.ledger tbody tr:nth-child(even) td{background:#f6f8fb}
+table.ledger tbody tr:nth-child(even) td:first-child{background:#eef2f8}
+table.ledger tbody tr:hover td{background:#e8eef7}
+table.ledger tbody tr:hover td:first-child{background:#dde5f1}
+/* Latest row highlight - SOLID */
+table.ledger tr.row-latest td{background:#fff8e1!important;font-weight:700;
   border-top:2px solid #d4a017;border-bottom:2px solid #d4a017}
-table.ledger .total-cell{font-weight:700;background:rgba(231,237,247,.7)!important;
-  color:var(--brand)}
-table.ledger tr.row-latest .total-cell{background:rgba(255,236,179,.85)!important;
-  color:#7c5e00}
+table.ledger tr.row-latest td:first-child{background:#fff3c0!important}
+/* Total column on the right - SOLID */
+table.ledger .total-cell{font-weight:700;background:#e7edf7!important;color:var(--brand)}
+table.ledger tr.row-latest .total-cell{background:#ffecb3!important;color:#7c5e00}
 table.ledger .date-cell{color:var(--brand)}
 table.ledger .latest-tag{background:var(--brand);color:#fff;font-size:9.5px;
   padding:2px 6px;border-radius:8px;margin-left:6px;letter-spacing:.3px;
