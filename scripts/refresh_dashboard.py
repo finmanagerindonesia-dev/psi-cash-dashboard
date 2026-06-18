@@ -58,6 +58,34 @@ def main():
     print(f"Reading {src.name} ...")
     wb = openpyxl.load_workbook(src, data_only=True)
     rows = read_all_banks(wb)
+
+    # ONE-TIME CLEANUP: remove stale auto-generated sheets from source.
+    # Previous versions of this script wrote CF Summary + Bank-Month sheets
+    # directly into the source workbook. Now they belong in the separate
+    # PSI Cash Flow Report.xlsx, so we clean the source to keep only the
+    # treasury's working sheets (All Banks etc).
+    stale = []
+    for sn in list(wb.sheetnames):
+        if sn in ("CF Summary", "CF Summary (IDR Mio)"):
+            stale.append(sn)
+        elif sn.startswith("Bank - "):
+            stale.append(sn)
+    if stale:
+        print(f"  Found {len(stale)} stale auto-gen sheets in source. Cleaning ...")
+        wb_clean = openpyxl.load_workbook(src)
+        for sn in stale:
+            if sn in wb_clean.sheetnames:
+                del wb_clean[sn]
+                print(f"    Removed: {sn}")
+        # Backup first
+        backup_dir = ROOT / "backups"
+        backup_dir.mkdir(exist_ok=True)
+        bk = backup_dir / f"PSI Cash Monitoring Master.cleanup.{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+        shutil.copy2(src, bk)
+        wb_clean.save(src)
+        print(f"  Source cleaned. Backup: {bk.name}")
+        # Reload source after cleanup so subsequent reads are clean
+        wb = openpyxl.load_workbook(src, data_only=True)
     print(f"  {len(rows):,} transactions loaded")
 
     usd_rate, inr_rate = detect_currency_rates(wb)
@@ -76,41 +104,46 @@ def main():
     # excluded so monthly reports aren't polluted by partial-month data).
     today_period = f"{datetime.now().year:04d}-{datetime.now().month:02d}"
     completed_periods = [p for p in periods if p < today_period]
-    print(f"  Today = {today_period}. Completed months for Excel CF Summary: "
+    print(f"  Today = {today_period}. Completed months for Excel report: "
           f"{', '.join(completed_periods) if completed_periods else '(none)'}")
 
+    # Build CF Summary structure (completed months only for Excel report)
+    print("Building report structures ...")
+    completed_lines = build_cf_structure(agg, completed_periods, rows=rows) if completed_periods else []
+
+    # Dashboard always uses ALL periods (Daily View needs current month).
+    lines = build_cf_structure(agg, periods, rows=rows)
+
+    # ====================================================================
+    # Generate SEPARATE report file (PSI Cash Flow Report.xlsx) in public/
+    # Source PSI Cash Monitoring Master.xlsx is NOT modified anymore.
+    # ====================================================================
+    import openpyxl as _ox
+    wb_report = _ox.Workbook()
+    if "Sheet" in wb_report.sheetnames:
+        wb_report.remove(wb_report["Sheet"])
+
     if completed_periods:
-        print("Building CF Summary structure (completed months) ...")
-        completed_lines = build_cf_structure(agg, completed_periods, rows=rows)
-
-        print("Writing CF Summary sheet (completed months only) ...")
-        write_cf_summary(wb, completed_lines, completed_periods,
+        print("Writing CF Summary to report (completed months only) ...")
+        write_cf_summary(wb_report, completed_lines, completed_periods,
                          usd_rate, inr_rate, bb_agg)
-
-        print("Writing CF Summary (IDR Mio) sheet (completed months only) ...")
-        write_cf_summary(wb, completed_lines, completed_periods,
+        print("Writing CF Summary (IDR Mio) to report ...")
+        write_cf_summary(wb_report, completed_lines, completed_periods,
                          usd_rate, inr_rate, bb_agg,
                          sheet_name="CF Summary (IDR Mio)", divisor=1_000_000,
                          unit_suffix=" (in IDR Million)")
     else:
-        print("[INFO] No completed months yet - skipping CF Summary sheets.")
+        print("[INFO] No completed months yet - CF Summary sheets skipped.")
 
-    # Dashboard always uses ALL periods (Daily View needs current month).
-    print("Building CF Summary structure for dashboard (all periods) ...")
-    lines = build_cf_structure(agg, periods, rows=rows)
-
-    print("Writing Bank - <Month> sheets ...")
-    write_bank_sheets(wb, rows, bb_agg, net_change_agg, periods,
+    print("Writing Bank - <Month> sheets to report (all periods) ...")
+    write_bank_sheets(wb_report, rows, bb_agg, net_change_agg, periods,
                       usd_rate, inr_rate)
 
-    backup_dir = ROOT / "backups"
-    backup_dir.mkdir(exist_ok=True)
-    backup = backup_dir / f"PSI Cash Monitoring Master.{datetime.now():%Y%m%d_%H%M%S}.xlsx"
-    shutil.copy2(src, backup)
-    print(f"  Backup saved to: {backup.name}")
-
-    wb.save(src)
-    print(f"  Saved: {src.name}")
+    PUBLIC_DIR.mkdir(exist_ok=True)
+    REPORT_PATH = PUBLIC_DIR / "PSI Cash Flow Report.xlsx"
+    wb_report.save(REPORT_PATH)
+    print(f"  Saved report: {REPORT_PATH.relative_to(ROOT)}")
+    print(f"  Source NOT modified: {src.name}")
 
     print("Building dashboard data ...")
     data = build_dashboard_data(rows, agg, bb_agg, net_change_agg,
@@ -128,7 +161,7 @@ def main():
 
     if password:
         from lib_crypto import encrypt_payload
-        print(f"  Encrypting payload with password from {PASSWORD_FILE.name} ...")
+        print(f"  Encrypting payload with {PASSWORD_FILE.name} ...")
         enc = encrypt_payload(json_text, password)
         enc_text = json.dumps(enc, indent=2)
         DATA_JSON.write_text(enc_text, encoding="utf-8")

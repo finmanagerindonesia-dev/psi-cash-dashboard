@@ -1315,9 +1315,15 @@ function renderFXRates(){
 
 function renderCFSummary(){
   const D = DATA;
+  const reportUrl = "PSI%20Cash%20Flow%20Report.xlsx";
   const card = el(`<div class="card">
     <h2>Cash Flow Summary - Detailed Table
-      <button class="collapse-btn" id="cfToggle">Show Details</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="download-btn" href="${reportUrl}" download="PSI Cash Flow Report.xlsx" title="Download full Excel report">
+          <span style="font-size:13px">⬇</span> Download Excel
+        </a>
+        <button class="collapse-btn" id="cfToggle">Show Details</button>
+      </div>
     </h2>
     <div class="scroll-x hidden" id="cf_body"></div></div>`);
   card.querySelector("#cfToggle").onclick = (e) => {

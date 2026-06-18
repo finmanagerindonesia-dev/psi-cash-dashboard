@@ -1,4 +1,4 @@
-"""Excel sheet writers for PSI Cash Flow Dashboard."""
+"""Excel sheet writers for PSI Cash Flow Report."""
 from __future__ import annotations
 
 from calendar import monthrange
@@ -11,27 +11,47 @@ from openpyxl.utils import get_column_letter
 from lib_pivot import INDONESIAN_MONTHS, MONTHS_FULL, month_label
 
 
+# Styling palette
 HEADER_FILL = PatternFill("solid", fgColor="1F3864")
 HEADER_FONT = Font(bold=True, color="FFFFFF", size=11)
 SECTION_FILL = PatternFill("solid", fgColor="D9E1F2")
 SECTION_FONT = Font(bold=True, color="1F3864")
 SUBTOTAL_FILL = PatternFill("solid", fgColor="F2F2F2")
 SUBTOTAL_FONT = Font(bold=True)
+SECTION_TOTAL_FILL = PatternFill("solid", fgColor="FFF8E1")
+SECTION_TOTAL_FONT = Font(bold=True, color="1F3864")
+ZEBRA_FILL = PatternFill("solid", fgColor="FAFBFD")
 COMPANY_FONT = Font(bold=True, size=14, color="1F3864")
 TOTAL_FILL = PatternFill("solid", fgColor="FFE699")
 TOTAL_FONT = Font(bold=True)
 
+# Borders
+_thin = Side(style="thin", color="BFC8DA")
+_medium = Side(style="medium", color="1F3864")
+BORDER_ALL = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+BORDER_HEADER = Border(left=_thin, right=_thin, top=_medium, bottom=_medium)
+BORDER_TOTAL_TOP = Border(left=_thin, right=_thin, top=_medium, bottom=_thin)
+
+CENTER = Alignment(horizontal="center", vertical="center", wrap_text=True)
+LEFT = Alignment(horizontal="left", vertical="center")
+RIGHT = Alignment(horizontal="right", vertical="center")
+
 
 def _apply_style(cell, kind):
+    cell.border = BORDER_ALL
     if kind == "section_header":
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
     elif kind == "subsection":
         cell.fill = SECTION_FILL
         cell.font = SECTION_FONT
-    elif kind in ("subtotal_section", "section_total"):
+    elif kind in ("subtotal_section",):
         cell.fill = SUBTOTAL_FILL
         cell.font = SUBTOTAL_FONT
+    elif kind == "section_total":
+        cell.fill = SECTION_TOTAL_FILL
+        cell.font = SECTION_TOTAL_FONT
+        cell.border = BORDER_TOTAL_TOP
 
 
 def _write_currency_row(ws, r, col, idr, usd_rate, inr_rate, fill, font):
@@ -41,64 +61,74 @@ def _write_currency_row(ws, r, col, idr, usd_rate, inr_rate, fill, font):
         cell.number_format = '#,##0;(#,##0);"-"'
         cell.fill = fill
         cell.font = font
+        cell.border = BORDER_ALL
+        cell.alignment = RIGHT
 
 
 def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
                      sheet_name="CF Summary", divisor=1, unit_suffix=""):
-    """Write CF Summary sheet. divisor scales all values (e.g. 1_000_000
-    for IDR Million view). unit_suffix is appended to the rate header."""
+    """Write CF Summary sheet with proper borders and table formatting."""
     if sheet_name in wb.sheetnames:
         del wb[sheet_name]
-    insert_at = 0 if sheet_name == "CF Summary" else 1
-    ws = wb.create_sheet(sheet_name, insert_at)
+    ws = wb.create_sheet(sheet_name)
 
     last_col = 2 + len(periods) * 3 + 3
 
     # Title
-    ws.cell(row=1, column=2, value="PT Prasad Seeds Indonesia").font = COMPANY_FONT
+    title_cell = ws.cell(row=1, column=2, value="PT Prasad Seeds Indonesia")
+    title_cell.font = COMPANY_FONT
+    title_cell.alignment = CENTER
     ws.merge_cells(start_row=1, start_column=2, end_row=1, end_column=last_col)
-    ws.cell(row=1, column=2).alignment = Alignment(horizontal="center")
+    ws.row_dimensions[1].height = 24
 
-    # Rate / timestamp row
-    ws.cell(row=2, column=2,
-            value=(f"USD = Rp {int(usd_rate):,}   |   INR = Rp {int(inr_rate)}"
-                   f"   |   Updated: {datetime.now():%d %b %Y %H:%M}"
+    # Subtitle / rate info
+    sub_cell = ws.cell(row=2, column=2,
+            value=(f"Cash Flow Statement   |   USD = Rp {int(usd_rate):,}   |   "
+                   f"INR = Rp {int(inr_rate)}   |   Generated: "
+                   f"{datetime.now():%d %b %Y %H:%M}"
                    + (unit_suffix or "")))
+    sub_cell.font = Font(italic=True, color="666666", size=10)
+    sub_cell.alignment = CENTER
     ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=last_col)
-    ws.cell(row=2, column=2).font = Font(italic=True, color="666666")
-    ws.cell(row=2, column=2).alignment = Alignment(horizontal="center")
+    ws.row_dimensions[2].height = 18
 
     # Header row 3 - month labels
-    ws.cell(row=3, column=2, value="Particular").fill = HEADER_FILL
-    ws.cell(row=3, column=2).font = HEADER_FONT
-    ws.cell(row=3, column=2).alignment = Alignment(horizontal="center", vertical="center")
+    c = ws.cell(row=3, column=2, value="Particular")
+    c.fill = HEADER_FILL; c.font = HEADER_FONT
+    c.alignment = CENTER; c.border = BORDER_HEADER
 
     col = 3
     for period in periods:
         c = ws.cell(row=3, column=col, value=month_label(period))
-        c.fill = HEADER_FILL
-        c.font = HEADER_FONT
-        c.alignment = Alignment(horizontal="center")
+        c.fill = HEADER_FILL; c.font = HEADER_FONT
+        c.alignment = CENTER; c.border = BORDER_HEADER
         ws.merge_cells(start_row=3, start_column=col, end_row=3, end_column=col + 2)
+        # Apply border to merged cells
+        for k in range(col, col + 3):
+            ws.cell(row=3, column=k).border = BORDER_HEADER
         col += 3
     c = ws.cell(row=3, column=col, value=f"YTD {periods[-1].split('-')[0]}")
-    c.fill = HEADER_FILL
-    c.font = HEADER_FONT
-    c.alignment = Alignment(horizontal="center")
+    c.fill = HEADER_FILL; c.font = HEADER_FONT
+    c.alignment = CENTER; c.border = BORDER_HEADER
     ws.merge_cells(start_row=3, start_column=col, end_row=3, end_column=col + 2)
+    for k in range(col, col + 3):
+        ws.cell(row=3, column=k).border = BORDER_HEADER
+
+    ws.row_dimensions[3].height = 22
 
     # Header row 4 - currency sublabels
     col = 3
     for _ in range(len(periods) + 1):
         for j, cur in enumerate(("IDR", "USD", "INR")):
             c = ws.cell(row=4, column=col + j, value=cur)
-            c.fill = HEADER_FILL
-            c.font = HEADER_FONT
-            c.alignment = Alignment(horizontal="center")
+            c.fill = HEADER_FILL; c.font = HEADER_FONT
+            c.alignment = CENTER; c.border = BORDER_HEADER
         col += 3
+    ws.row_dimensions[4].height = 18
 
     # Data rows
     r = 5
+    zebra_toggle = False
     for line in lines:
         kind = line["kind"]
         if kind == "blank":
@@ -107,6 +137,7 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
         indent = line.get("indent", 0)
         label_cell = ws.cell(row=r, column=2,
                              value=("    " * indent) + line["label"])
+        label_cell.alignment = LEFT
         _apply_style(label_cell, kind)
 
         ytd = {"IDR": 0.0, "USD": 0.0, "INR": 0.0}
@@ -115,38 +146,34 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
             idr = (line["values"].get(period, 0.0) or 0.0) / divisor
             usd = idr / usd_rate if usd_rate else 0
             inr = idr / inr_rate if inr_rate else 0
-            ytd["IDR"] += idr
-            ytd["USD"] += usd
-            ytd["INR"] += inr
+            ytd["IDR"] += idr; ytd["USD"] += usd; ytd["INR"] += inr
             for j, val in enumerate((idr, usd, inr)):
-                if line["values"]:
-                    cell = ws.cell(row=r, column=col + j,
-                                   value=val if val else None)
-                    cell.number_format = '#,##0;(#,##0);"-"'
-                    _apply_style(cell, kind)
+                cell = ws.cell(row=r, column=col + j,
+                               value=val if val else None)
+                cell.number_format = '#,##0;(#,##0);"-"'
+                cell.alignment = RIGHT
+                _apply_style(cell, kind)
             col += 3
         for j, cur in enumerate(("IDR", "USD", "INR")):
-            if line["values"]:
-                cell = ws.cell(row=r, column=col + j,
-                               value=ytd[cur] if ytd[cur] else None)
-                cell.number_format = '#,##0;(#,##0);"-"'
-                _apply_style(cell, kind)
+            cell = ws.cell(row=r, column=col + j,
+                           value=ytd[cur] if ytd[cur] else None)
+            cell.number_format = '#,##0;(#,##0);"-"'
+            cell.alignment = RIGHT
+            _apply_style(cell, kind)
+
+        # Zebra striping for leaf rows
+        if kind == "leaf" and zebra_toggle:
+            for k in range(2, last_col + 1):
+                if ws.cell(row=r, column=k).fill.fgColor.rgb in (None, "00000000"):
+                    ws.cell(row=r, column=k).fill = ZEBRA_FILL
+        if kind == "leaf":
+            zebra_toggle = not zebra_toggle
+        else:
+            zebra_toggle = False
         r += 1
 
-    # Reconciliation block
+    # Reconciliation block (Beginning + Ending)
     r += 1
-    bb_fill, bb_font = SUBTOTAL_FILL, SUBTOTAL_FONT
-    ws.cell(row=r, column=2, value="BEGINNING").fill = bb_fill
-    ws.cell(row=r, column=2).font = bb_font
-    col = 3
-    for period in periods:
-        opening = sum(v for (b, p), v in bb_agg.items() if p == period) / divisor
-        _write_currency_row(ws, r, col, opening, usd_rate, inr_rate, bb_fill, bb_font)
-        col += 3
-    first_opening = sum(v for (b, p), v in bb_agg.items() if p == periods[0]) / divisor
-    _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate, bb_fill, bb_font)
-    r += 1
-
     incoming_sum = defaultdict(float)
     outflow_sum = defaultdict(float)
     for line in lines:
@@ -157,8 +184,26 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
             for p, v in line["values"].items():
                 outflow_sum[p] += v
 
-    ws.cell(row=r, column=2, value="ENDING").fill = bb_fill
-    ws.cell(row=r, column=2).font = bb_font
+    # BEGINNING row
+    cell = ws.cell(row=r, column=2, value="BEGINNING BALANCE")
+    cell.fill = SECTION_FILL; cell.font = SECTION_FONT
+    cell.alignment = LEFT; cell.border = BORDER_ALL
+    col = 3
+    for period in periods:
+        opening = sum(v for (b, p), v in bb_agg.items() if p == period) / divisor
+        _write_currency_row(ws, r, col, opening, usd_rate, inr_rate,
+                            SECTION_FILL, SECTION_FONT)
+        col += 3
+    first_opening = sum(v for (b, p), v in bb_agg.items()
+                        if p == periods[0]) / divisor
+    _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate,
+                        SECTION_FILL, SECTION_FONT)
+    r += 1
+
+    # ENDING row
+    cell = ws.cell(row=r, column=2, value="ENDING BALANCE")
+    cell.fill = SECTION_TOTAL_FILL; cell.font = SECTION_TOTAL_FONT
+    cell.alignment = LEFT; cell.border = BORDER_TOTAL_TOP
     col = 3
     ytd_ending = 0.0
     for period in periods:
@@ -166,9 +211,19 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
         net = incoming_sum.get(period, 0) + outflow_sum.get(period, 0)
         ending = (opening + net) / divisor
         ytd_ending = ending
-        _write_currency_row(ws, r, col, ending, usd_rate, inr_rate, bb_fill, bb_font)
+        for j, val in enumerate((ending, ending / usd_rate if usd_rate else 0,
+                                 ending / inr_rate if inr_rate else 0)):
+            cc = ws.cell(row=r, column=col + j, value=val if val else None)
+            cc.number_format = '#,##0;(#,##0);"-"'
+            cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
+            cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
         col += 3
-    _write_currency_row(ws, r, col, ytd_ending, usd_rate, inr_rate, bb_fill, bb_font)
+    for j, val in enumerate((ytd_ending, ytd_ending / usd_rate if usd_rate else 0,
+                             ytd_ending / inr_rate if inr_rate else 0)):
+        cc = ws.cell(row=r, column=col + j, value=val if val else None)
+        cc.number_format = '#,##0;(#,##0);"-"'
+        cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
+        cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
 
     # Column widths
     ws.column_dimensions["A"].width = 2
@@ -176,6 +231,13 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
     for cidx in range(3, last_col + 1):
         ws.column_dimensions[get_column_letter(cidx)].width = 16
     ws.freeze_panes = "C5"
+
+    # Print setup
+    ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
 
 
 def write_bank_sheets(wb, rows, bb_agg, net_change_agg, periods,
@@ -191,63 +253,94 @@ def write_bank_sheets(wb, rows, bb_agg, net_change_agg, periods,
             del wb[sheet_name]
         ws = wb.create_sheet(sheet_name)
 
+        # Title block
         ws["A1"] = "PT Prasad Seeds Indonesia"
         ws["A1"].font = Font(bold=True, size=14, color="1F3864")
         ws.merge_cells("A1:H1")
         ws["A1"].alignment = Alignment(horizontal="center")
+        ws.row_dimensions[1].height = 24
 
-        ws["A2"] = "Bank Position"
-        ws["A2"].font = Font(bold=True, italic=True)
+        ws["A2"] = "Bank Position Summary"
+        ws["A2"].font = Font(bold=True, italic=True, size=11)
         ws.merge_cells("A2:H2")
         ws["A2"].alignment = Alignment(horizontal="center")
 
         y, m = period.split("-")
         last_day = monthrange(int(y), int(m))[1]
         ws["A3"] = f"As of: {MONTHS_FULL[int(m)]} {last_day}, {y}"
-        ws["A3"].font = Font(italic=True, color="666666")
+        ws["A3"].font = Font(italic=True, color="666666", size=10)
         ws.merge_cells("A3:H3")
         ws["A3"].alignment = Alignment(horizontal="center")
 
+        # Header row 5
         headers = ["Bank", "Unit", "Currency", "Opening Balance", "Net Change",
                    "Ending Balance (IDR)", "Ending (USD)", "Ending (INR)"]
         for i, h in enumerate(headers, 1):
             c = ws.cell(row=5, column=i, value=h)
-            c.fill = HEADER_FILL
-            c.font = HEADER_FONT
-            c.alignment = Alignment(horizontal="center")
+            c.fill = HEADER_FILL; c.font = HEADER_FONT
+            c.alignment = CENTER; c.border = BORDER_HEADER
+        ws.row_dimensions[5].height = 26
 
+        # Data rows
         r = 6
         total_idr = 0.0
+        zebra_toggle = False
         for bank in sorted(bank_meta.keys()):
             opening = bb_agg.get((bank, period), 0.0)
             net_change = net_change_agg.get((bank, period), 0.0)
             ending = opening + net_change
             if not (opening or net_change or ending):
                 continue
-            ws.cell(row=r, column=1, value=bank)
-            ws.cell(row=r, column=2, value=bank_meta[bank]["unit"] or "-")
-            cur = "USD-equiv (IDR)" if "USD" in bank else "IDR"
-            ws.cell(row=r, column=3, value=cur)
+            row_fill = ZEBRA_FILL if zebra_toggle else None
+            for col_idx, val in [(1, bank),
+                                  (2, bank_meta[bank]["unit"] or "-"),
+                                  (3, "USD-equiv (IDR)" if "USD" in bank else "IDR")]:
+                cell = ws.cell(row=r, column=col_idx, value=val)
+                cell.border = BORDER_ALL
+                cell.alignment = LEFT
+                if row_fill: cell.fill = row_fill
             for col_idx, val in [(4, opening), (5, net_change), (6, ending)]:
                 cell = ws.cell(row=r, column=col_idx, value=val)
                 cell.number_format = '#,##0;(#,##0);"-"'
-            ws.cell(row=r, column=7,
-                    value=ending / usd_rate).number_format = '#,##0.00;(#,##0.00);"-"'
-            ws.cell(row=r, column=8,
-                    value=ending / inr_rate).number_format = '#,##0.00;(#,##0.00);"-"'
+                cell.border = BORDER_ALL
+                cell.alignment = RIGHT
+                if row_fill: cell.fill = row_fill
+            cell = ws.cell(row=r, column=7, value=ending / usd_rate)
+            cell.number_format = '#,##0.00;(#,##0.00);"-"'
+            cell.border = BORDER_ALL; cell.alignment = RIGHT
+            if row_fill: cell.fill = row_fill
+            cell = ws.cell(row=r, column=8, value=ending / inr_rate)
+            cell.number_format = '#,##0.00;(#,##0.00);"-"'
+            cell.border = BORDER_ALL; cell.alignment = RIGHT
+            if row_fill: cell.fill = row_fill
             total_idr += ending
+            zebra_toggle = not zebra_toggle
             r += 1
 
-        ws.cell(row=r, column=1, value="TOTAL")
+        # Total row
+        cell = ws.cell(row=r, column=1, value="TOTAL")
+        cell.alignment = LEFT
         for col_idx in range(1, 9):
-            ws.cell(row=r, column=col_idx).fill = TOTAL_FILL
-            ws.cell(row=r, column=col_idx).font = TOTAL_FONT
-        ws.cell(row=r, column=6,
-                value=total_idr).number_format = '#,##0;(#,##0);"-"'
-        ws.cell(row=r, column=7,
-                value=total_idr / usd_rate).number_format = '#,##0.00;(#,##0.00);"-"'
-        ws.cell(row=r, column=8,
-                value=total_idr / inr_rate).number_format = '#,##0.00;(#,##0.00);"-"'
+            c = ws.cell(row=r, column=col_idx)
+            c.fill = TOTAL_FILL; c.font = TOTAL_FONT
+            c.border = BORDER_TOTAL_TOP
+        ws.cell(row=r, column=6, value=total_idr).number_format = '#,##0;(#,##0);"-"'
+        ws.cell(row=r, column=6).alignment = RIGHT
+        ws.cell(row=r, column=7, value=total_idr / usd_rate).number_format = '#,##0.00;(#,##0.00);"-"'
+        ws.cell(row=r, column=7).alignment = RIGHT
+        ws.cell(row=r, column=8, value=total_idr / inr_rate).number_format = '#,##0.00;(#,##0.00);"-"'
+        ws.cell(row=r, column=8).alignment = RIGHT
+        # Re-apply borders + fonts after setting values
+        for col_idx in range(1, 9):
+            c = ws.cell(row=r, column=col_idx)
+            c.fill = TOTAL_FILL; c.font = TOTAL_FONT
+            c.border = BORDER_TOTAL_TOP
 
-        for cidx, w in enumerate([18, 12, 18, 22, 22, 24, 16, 16], start=1):
+        # Column widths
+        for cidx, w in enumerate([20, 12, 18, 22, 22, 24, 18, 18], start=1):
             ws.column_dimensions[get_column_letter(cidx)].width = w
+
+        ws.freeze_panes = "A6"
+        ws.page_setup.orientation = ws.ORIENTATION_LANDSCAPE
+        ws.page_setup.fitToWidth = 1
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
