@@ -92,10 +92,14 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
     ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=last_col)
     ws.row_dimensions[2].height = 18
 
-    # Header row 3 - month labels
+    # Header row 3-4 - "Particular" merged across both rows; month labels
     c = ws.cell(row=3, column=2, value="Particular")
     c.fill = HEADER_FILL; c.font = HEADER_FONT
     c.alignment = CENTER; c.border = BORDER_HEADER
+    # Merge Particular cell across rows 3+4 (no empty box below header)
+    ws.merge_cells(start_row=3, start_column=2, end_row=4, end_column=2)
+    ws.cell(row=4, column=2).fill = HEADER_FILL
+    ws.cell(row=4, column=2).border = BORDER_HEADER
 
     col = 3
     for period in periods:
@@ -132,7 +136,8 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
     for line in lines:
         kind = line["kind"]
         if kind == "blank":
-            r += 1
+            # Skip blank rows entirely - no empty boxes in Particular column.
+            # Section separation handled visually via colored headers.
             continue
         indent = line.get("indent", 0)
         label_cell = ws.cell(row=r, column=2,
@@ -172,8 +177,8 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
             zebra_toggle = False
         r += 1
 
-    # Reconciliation block (Beginning + Ending)
-    r += 1
+    # Reconciliation block (Beginning + Ending) - placed directly under
+    # the last data row, no empty gap above
     incoming_sum = defaultdict(float)
     outflow_sum = defaultdict(float)
     for line in lines:
