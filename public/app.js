@@ -584,12 +584,100 @@ function renderPeriodReview(root){
     });
   });
 
-  // KPIs + drill-downs
+  // KPIs + drill-downs + activity
   root.appendChild(renderPeriodKPIs(PERIOD_START, PERIOD_END));
   const row2 = el(`<div class="row2"></div>`);
   row2.appendChild(renderPeriodIncoming(PERIOD_START, PERIOD_END));
   row2.appendChild(renderPeriodOutflow(PERIOD_START, PERIOD_END));
   root.appendChild(row2);
+  root.appendChild(renderPeriodActivity(PERIOD_START, PERIOD_END));
+}
+
+function aggregatePeriodActivity(start, end){
+  const categories = {};
+  for(const t of (DATA.transactions || [])){
+    if(t.d < start || t.d > end) continue;
+    let label, kind;
+    if(t.c === "Incoming"){
+      const det = t.dt || "Other";
+      label = INCOMING_LABELS_MAP[det] || det || "Other";
+      kind = "inflow";
+    } else if(t.c && t.c.startsWith("Outflow")){
+      label = bucketForCategory(t.c);
+      kind = "outflow";
+    } else {
+      continue;
+    }
+    if(!categories[label]){
+      categories[label] = {label, kind, amount: 0, transactions: []};
+    }
+    categories[label].amount += t.a;
+    categories[label].transactions.push({
+      date: t.d, bank: t.b,
+      party: t.p || "-", detail: t.dt || "-",
+      sub: t.s || "-", amount: t.a,
+    });
+  }
+  Object.values(categories).forEach(cat => {
+    cat.transactions.sort((a, b) => b.date.localeCompare(a.date) || a.amount - b.amount);
+    cat.tx_count = cat.transactions.length;
+  });
+  return Object.values(categories).sort((a, b) => {
+    if(a.kind !== b.kind) return a.kind === "inflow" ? -1 : 1;
+    if(a.kind === "inflow") return b.amount - a.amount;
+    return a.amount - b.amount;
+  });
+}
+
+function renderPeriodActivity(start, end){
+  const cats = aggregatePeriodActivity(start, end);
+  const totalTx = cats.reduce((s, c) => s + c.tx_count, 0);
+  if(!cats.length){
+    return el(`<div class="card">
+      <h2>Period Activity <span class="pill">${fmtDate(start)} → ${fmtDate(end)}</span></h2>
+      <div class="empty">No transactions in this period.</div></div>`);
+  }
+  const items = cats.map((c, ci) => {
+    const txRows = c.transactions.map(t => {
+      const cls = t.amount > 0 ? "pos" : "neg";
+      return `<tr>
+        <td>${fmtDate(t.date)}</td>
+        <td>${escapeHtml(t.bank || "-")}</td>
+        <td>${escapeHtml(t.detail || "-")}</td>
+        <td class="party-cell" title="${escapeHtml(t.party)}">${escapeHtml(t.party)}</td>
+        <td class="amt ${cls}">${fmtBig(t.amount)}</td>
+      </tr>`;
+    }).join("");
+    const kindCls = c.kind === "inflow" ? "pos" : "neg";
+    return `
+    <div class="fgroup" data-ci="${ci}">
+      <div class="fhead" onclick="toggleFGroup(this.parentElement)">
+        <div class="arrow">&#9656;</div>
+        <div class="fname">${escapeHtml(c.label)}<span class="scount"> &middot; ${c.tx_count} transactions</span></div>
+        <div class="famt amount ${kindCls}">${fmtBig(c.amount)}</div>
+      </div>
+      <div class="fbody">
+        <div class="scroll-x"><table class="tx">
+          <thead><tr>
+            <th>Date</th><th>Bank</th><th>Detail</th>
+            <th style="text-align:left">Party</th>
+            <th style="text-align:right">Amount</th>
+          </tr></thead>
+          <tbody>${txRows || '<tr><td colspan="5" class="empty">No transactions.</td></tr>'}</tbody>
+        </table></div>
+      </div>
+    </div>`;
+  }).join("");
+  return el(`<div class="card">
+    <h2>Period Activity
+      <span class="pill">${fmtDate(start)} → ${fmtDate(end)} &middot; ${totalTx} transactions</span>
+    </h2>
+    <div class="body">
+      <div class="muted" style="margin-bottom:10px;font-size:12px">
+        Click a category to see individual transactions with date, bank, and vendor details.
+      </div>
+      <div class="flow">${items}</div>
+    </div></div>`);
 }
 
 function savePeriodChoice(){
