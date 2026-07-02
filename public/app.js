@@ -593,90 +593,122 @@ function renderPeriodReview(root){
   root.appendChild(renderPeriodActivity(PERIOD_START, PERIOD_END));
 }
 
-function aggregatePeriodActivity(start, end){
-  const categories = {};
+function aggregatePeriodByDate(start, end){
+  const days = {};
+  let runningNet = 0;
   for(const t of (DATA.transactions || [])){
     if(t.d < start || t.d > end) continue;
-    let label, kind;
-    if(t.c === "Incoming"){
-      const det = t.dt || "Other";
-      label = INCOMING_LABELS_MAP[det] || det || "Other";
-      kind = "inflow";
-    } else if(t.c && t.c.startsWith("Outflow")){
-      label = bucketForCategory(t.c);
-      kind = "outflow";
-    } else {
-      continue;
+    if(!t.c) continue;
+    const isInflow = t.c === "Incoming";
+    const isOutflow = t.c.startsWith("Outflow");
+    if(!isInflow && !isOutflow) continue;
+    if(!days[t.d]){
+      days[t.d] = {date: t.d, inflow: 0, outflow: 0, transactions: []};
     }
-    if(!categories[label]){
-      categories[label] = {label, kind, amount: 0, transactions: []};
-    }
-    categories[label].amount += t.a;
-    categories[label].transactions.push({
-      date: t.d, bank: t.b,
-      party: t.p || "-", detail: t.dt || "-",
-      sub: t.s || "-", amount: t.a,
+    const category = isInflow
+      ? (INCOMING_LABELS_MAP[t.dt] || t.dt || "Other Receipt")
+      : bucketForCategory(t.c);
+    days[t.d].transactions.push({
+      bank: t.b, category, subcat: t.s || t.dt || "-",
+      party: t.p || "-", amount: t.a,
+      kind: isInflow ? "inflow" : "outflow",
     });
+    if(isInflow) days[t.d].inflow += t.a;
+    else days[t.d].outflow += t.a;
   }
-  Object.values(categories).forEach(cat => {
-    cat.transactions.sort((a, b) => b.date.localeCompare(a.date) || a.amount - b.amount);
-    cat.tx_count = cat.transactions.length;
+  // Sort transactions within each day by absolute amount (largest impact first)
+  Object.values(days).forEach(d => {
+    d.transactions.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+    d.tx_count = d.transactions.length;
+    d.net = d.inflow + d.outflow;
   });
-  return Object.values(categories).sort((a, b) => {
-    if(a.kind !== b.kind) return a.kind === "inflow" ? -1 : 1;
-    if(a.kind === "inflow") return b.amount - a.amount;
-    return a.amount - b.amount;
+  // Sort days chronologically (oldest first)
+  const sortedDays = Object.values(days).sort((a, b) => a.date.localeCompare(b.date));
+  // Compute running cumulative net across days
+  sortedDays.forEach(d => {
+    runningNet += d.net;
+    d.cumulative_net = runningNet;
   });
+  return sortedDays;
 }
 
 function renderPeriodActivity(start, end){
-  const cats = aggregatePeriodActivity(start, end);
-  const totalTx = cats.reduce((s, c) => s + c.tx_count, 0);
-  if(!cats.length){
+  const days = aggregatePeriodByDate(start, end);
+  const totalTx = days.reduce((s, d) => s + d.tx_count, 0);
+  const totalInflow = days.reduce((s, d) => s + d.inflow, 0);
+  const totalOutflow = days.reduce((s, d) => s + d.outflow, 0);
+  const totalNet = totalInflow + totalOutflow;
+  if(!days.length){
     return el(`<div class="card">
       <h2>Period Activity <span class="pill">${fmtDate(start)} → ${fmtDate(end)}</span></h2>
       <div class="empty">No transactions in this period.</div></div>`);
   }
-  const items = cats.map((c, ci) => {
-    const txRows = c.transactions.map(t => {
+  const items = days.map((d, di) => {
+    const txRows = d.transactions.map(t => {
       const cls = t.amount > 0 ? "pos" : "neg";
+      const kindTag = t.kind === "inflow"
+        ? '<span class="kind-tag in">IN</span>'
+        : '<span class="kind-tag out">OUT</span>';
       return `<tr>
-        <td>${fmtDate(t.date)}</td>
+        <td>${kindTag}</td>
         <td>${escapeHtml(t.bank || "-")}</td>
-        <td>${escapeHtml(t.detail || "-")}</td>
+        <td>${escapeHtml(t.category || "-")}</td>
+        <td>${escapeHtml(t.subcat || "-")}</td>
         <td class="party-cell" title="${escapeHtml(t.party)}">${escapeHtml(t.party)}</td>
         <td class="amt ${cls}">${fmtBig(t.amount)}</td>
       </tr>`;
     }).join("");
-    const kindCls = c.kind === "inflow" ? "pos" : "neg";
+    const netCls = d.net >= 0 ? "pos" : "neg";
+    const dt = new Date(d.date + "T00:00:00");
+    const dayName = dt.toLocaleDateString("en-US", {weekday: "short"});
     return `
-    <div class="fgroup" data-ci="${ci}">
+    <div class="fgroup" data-di="${di}">
       <div class="fhead" onclick="toggleFGroup(this.parentElement)">
         <div class="arrow">&#9656;</div>
-        <div class="fname">${escapeHtml(c.label)}<span class="scount"> &middot; ${c.tx_count} transactions</span></div>
-        <div class="famt amount ${kindCls}">${fmtBig(c.amount)}</div>
+        <div class="fname">${fmtDate(d.date)} <span class="muted" style="font-weight:500">(${dayName}) &middot; ${d.tx_count} transactions</span></div>
+        <div class="weekly-summary">
+          <span class="amount pos" title="Inflow">+${fmtBig(d.inflow)}</span>
+          <span class="amount neg" title="Outflow">${fmtBig(d.outflow)}</span>
+          <span class="amount ${netCls}" title="Net for this day" style="font-weight:700;border-left:2px solid var(--line);padding-left:10px">Net ${fmtBig(d.net)}</span>
+        </div>
       </div>
       <div class="fbody">
+        <div class="muted" style="margin-bottom:6px;font-size:11.5px">
+          Cumulative net from ${fmtDate(start)}: <b class="amount ${d.cumulative_net >= 0 ? 'pos' : 'neg'}">${fmtBig(d.cumulative_net)}</b>
+        </div>
         <div class="scroll-x"><table class="tx">
           <thead><tr>
-            <th>Date</th><th>Bank</th><th>Detail</th>
+            <th></th>
+            <th>Bank</th>
+            <th>Category</th>
+            <th>Sub-Category</th>
             <th style="text-align:left">Party</th>
             <th style="text-align:right">Amount</th>
           </tr></thead>
-          <tbody>${txRows || '<tr><td colspan="5" class="empty">No transactions.</td></tr>'}</tbody>
+          <tbody>${txRows || '<tr><td colspan="6" class="empty">No transactions.</td></tr>'}</tbody>
         </table></div>
       </div>
     </div>`;
   }).join("");
+  const netCls = totalNet >= 0 ? "pos" : "neg";
   return el(`<div class="card">
-    <h2>Period Activity
-      <span class="pill">${fmtDate(start)} → ${fmtDate(end)} &middot; ${totalTx} transactions</span>
+    <h2>Period Activity &mdash; Chronological Money Movement
+      <span class="pill">${fmtDate(start)} → ${fmtDate(end)} &middot; ${days.length} days &middot; ${totalTx} tx</span>
     </h2>
     <div class="body">
       <div class="muted" style="margin-bottom:10px;font-size:12px">
-        Click a category to see individual transactions with date, bank, and vendor details.
+        Days grouped chronologically (oldest → newest). Click a date to see the transactions.
+        Cumulative net shows running total from start of period.
       </div>
       <div class="flow">${items}</div>
+      <div style="margin-top:14px;padding:12px 16px;background:linear-gradient(90deg,var(--pos-bg),var(--neg-bg));border-radius:9px;font-weight:700;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span>PERIOD TOTAL</span>
+        <span>
+          <span class="amount pos">+${fmtBig(totalInflow)}</span> &middot;
+          <span class="amount neg">${fmtBig(totalOutflow)}</span> &middot;
+          <span class="amount ${netCls}">Net ${fmtBig(totalNet)}</span>
+        </span>
+      </div>
     </div></div>`);
 }
 
