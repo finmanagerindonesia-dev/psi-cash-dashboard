@@ -603,28 +603,45 @@ function aggregatePeriodByDate(start, end){
     const isOutflow = t.c.startsWith("Outflow");
     if(!isInflow && !isOutflow) continue;
     if(!days[t.d]){
-      days[t.d] = {date: t.d, inflow: 0, outflow: 0, transactions: []};
+      days[t.d] = {date: t.d, inflow: 0, outflow: 0, banks: {}, tx_count: 0};
     }
+    const day = days[t.d];
     const category = isInflow
       ? (INCOMING_LABELS_MAP[t.dt] || t.dt || "Other Receipt")
       : bucketForCategory(t.c);
-    days[t.d].transactions.push({
-      bank: t.b, category, subcat: t.s || t.dt || "-",
+    const bankName = t.b || "-";
+    if(!day.banks[bankName]){
+      day.banks[bankName] = {bank: bankName, inflow: 0, outflow: 0, transactions: []};
+    }
+    day.banks[bankName].transactions.push({
+      category, subcat: t.s || t.dt || "-",
       party: t.p || "-", amount: t.a,
       kind: isInflow ? "inflow" : "outflow",
     });
-    if(isInflow) days[t.d].inflow += t.a;
-    else days[t.d].outflow += t.a;
+    if(isInflow){
+      day.inflow += t.a;
+      day.banks[bankName].inflow += t.a;
+    } else {
+      day.outflow += t.a;
+      day.banks[bankName].outflow += t.a;
+    }
+    day.tx_count++;
   }
-  // Sort transactions within each day by absolute amount (largest impact first)
+  // Sort transactions within each bank + sort banks within each day
   Object.values(days).forEach(d => {
-    d.transactions.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
-    d.tx_count = d.transactions.length;
+    Object.values(d.banks).forEach(b => {
+      b.transactions.sort((x, y) => Math.abs(y.amount) - Math.abs(x.amount));
+      b.tx_count = b.transactions.length;
+      b.net = b.inflow + b.outflow;
+      b.total_activity = Math.abs(b.inflow) + Math.abs(b.outflow);
+    });
+    // Sort banks by total activity (biggest first)
+    d.banks_sorted = Object.values(d.banks)
+      .sort((a, b) => b.total_activity - a.total_activity);
     d.net = d.inflow + d.outflow;
   });
   // Sort days chronologically (oldest first)
   const sortedDays = Object.values(days).sort((a, b) => a.date.localeCompare(b.date));
-  // Compute running cumulative net across days
   sortedDays.forEach(d => {
     runningNet += d.net;
     d.cumulative_net = runningNet;
@@ -644,28 +661,57 @@ function renderPeriodActivity(start, end){
       <div class="empty">No transactions in this period.</div></div>`);
   }
   const items = days.map((d, di) => {
-    const txRows = d.transactions.map(t => {
-      const cls = t.amount > 0 ? "pos" : "neg";
-      const kindTag = t.kind === "inflow"
-        ? '<span class="kind-tag in">IN</span>'
-        : '<span class="kind-tag out">OUT</span>';
-      return `<tr>
-        <td>${kindTag}</td>
-        <td>${escapeHtml(t.bank || "-")}</td>
-        <td>${escapeHtml(t.category || "-")}</td>
-        <td>${escapeHtml(t.subcat || "-")}</td>
-        <td class="party-cell" title="${escapeHtml(t.party)}">${escapeHtml(t.party)}</td>
-        <td class="amt ${cls}">${fmtBig(t.amount)}</td>
-      </tr>`;
+    // Build bank sub-groups
+    const bankGroups = d.banks_sorted.map((b, bi) => {
+      const txRows = b.transactions.map(t => {
+        const cls = t.amount > 0 ? "pos" : "neg";
+        const kindTag = t.kind === "inflow"
+          ? '<span class="kind-tag in">IN</span>'
+          : '<span class="kind-tag out">OUT</span>';
+        return `<tr>
+          <td>${kindTag}</td>
+          <td>${escapeHtml(t.category || "-")}</td>
+          <td>${escapeHtml(t.subcat || "-")}</td>
+          <td class="party-cell" title="${escapeHtml(t.party)}">${escapeHtml(t.party)}</td>
+          <td class="amt ${cls}">${fmtBig(t.amount)}</td>
+        </tr>`;
+      }).join("");
+      const bankNetCls = b.net >= 0 ? "pos" : "neg";
+      // In/out mini-summary next to bank name
+      const inOutStr = (b.inflow !== 0 && b.outflow !== 0)
+        ? `<span class="muted" style="font-size:11px;font-weight:400">+${fmtBig(b.inflow)} / ${fmtBig(b.outflow)}</span>`
+        : "";
+      return `
+      <div class="subgroup" data-bi="${bi}">
+        <div class="shead" onclick="toggleSub(this.parentElement)">
+          <span class="arrow">&#9656;</span>
+          <span class="sname">${escapeHtml(b.bank)}<span class="scount"> &middot; ${b.tx_count} tx</span> ${inOutStr}</span>
+          <span class="samt amount ${bankNetCls}">Net ${fmtBig(b.net)}</span>
+        </div>
+        <div class="parties">
+          <div class="scroll-x"><table class="tx">
+            <thead><tr>
+              <th></th>
+              <th>Category</th>
+              <th>Sub-Category</th>
+              <th style="text-align:left">Party</th>
+              <th style="text-align:right">Amount</th>
+            </tr></thead>
+            <tbody>${txRows}</tbody>
+          </table></div>
+        </div>
+      </div>`;
     }).join("");
+
     const netCls = d.net >= 0 ? "pos" : "neg";
     const dt = new Date(d.date + "T00:00:00");
     const dayName = dt.toLocaleDateString("en-US", {weekday: "short"});
+    const bankCount = d.banks_sorted.length;
     return `
     <div class="fgroup" data-di="${di}">
       <div class="fhead" onclick="toggleFGroup(this.parentElement)">
         <div class="arrow">&#9656;</div>
-        <div class="fname">${fmtDate(d.date)} <span class="muted" style="font-weight:500">(${dayName}) &middot; ${d.tx_count} transactions</span></div>
+        <div class="fname">${fmtDate(d.date)} <span class="muted" style="font-weight:500">(${dayName}) &middot; ${d.tx_count} tx across ${bankCount} bank${bankCount>1?"s":""}</span></div>
         <div class="weekly-summary">
           <span class="amount pos" title="Inflow">+${fmtBig(d.inflow)}</span>
           <span class="amount neg" title="Outflow">${fmtBig(d.outflow)}</span>
@@ -673,20 +719,11 @@ function renderPeriodActivity(start, end){
         </div>
       </div>
       <div class="fbody">
-        <div class="muted" style="margin-bottom:6px;font-size:11.5px">
+        <div class="muted" style="margin-bottom:8px;font-size:11.5px">
           Cumulative net from ${fmtDate(start)}: <b class="amount ${d.cumulative_net >= 0 ? 'pos' : 'neg'}">${fmtBig(d.cumulative_net)}</b>
+          &middot; Click a bank to see transactions.
         </div>
-        <div class="scroll-x"><table class="tx">
-          <thead><tr>
-            <th></th>
-            <th>Bank</th>
-            <th>Category</th>
-            <th>Sub-Category</th>
-            <th style="text-align:left">Party</th>
-            <th style="text-align:right">Amount</th>
-          </tr></thead>
-          <tbody>${txRows || '<tr><td colspan="6" class="empty">No transactions.</td></tr>'}</tbody>
-        </table></div>
+        ${bankGroups}
       </div>
     </div>`;
   }).join("");
