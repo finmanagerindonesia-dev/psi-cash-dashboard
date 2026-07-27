@@ -16,6 +16,10 @@ backups/
 dashboard-password.txt
 refresh.log
 
+# GitHub token file (NEVER commit this!)
+github-token.txt
+vercel_config.txt
+
 # OS
 .DS_Store
 Thumbs.db

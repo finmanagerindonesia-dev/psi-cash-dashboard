@@ -129,6 +129,28 @@ if not exist ".git" (
     goto :SUCCESS_END
 )
 
+REM --- 6b. Read GitHub token & repo from vercel_config.txt if exists ---
+REM Format (key=value per line):
+REM   owner=finmanagerindonesia-dev
+REM   repo=psi-cash-dashboard
+REM   branch=main
+REM   pat=ghp_YOUR_TOKEN_HERE
+if exist "vercel_config.txt" (
+    for /f "usebackq tokens=1,* delims==" %%A in ("vercel_config.txt") do (
+        if /I "%%A"=="pat" set "GH_TOKEN=%%B"
+        if /I "%%A"=="owner" set "GH_OWNER=%%B"
+        if /I "%%A"=="repo" set "GH_REPO=%%B"
+    )
+    if defined GH_TOKEN (
+        if not defined GH_OWNER set "GH_OWNER=finmanagerindonesia-dev"
+        if not defined GH_REPO set "GH_REPO=psi-cash-dashboard"
+        call :LOG ""
+        call :LOG "[INFO] Using token from vercel_config.txt (owner=!GH_OWNER!, repo=!GH_REPO!)"
+        git remote set-url origin https://!GH_TOKEN!@github.com/!GH_OWNER!/!GH_REPO!.git >> "%LOGFILE%" 2>&1
+        set "GH_TOKEN="
+    )
+)
+
 call :LOG ""
 call :LOG "[3/4] Git: stage + commit ..."
 git add public/ scripts/ vercel.json README.md .gitignore refresh.bat refresh.sh setup-git.bat view.bat >> "%LOGFILE%" 2>&1
