@@ -67,18 +67,19 @@ def _write_currency_row(ws, r, col, idr, usd_rate, inr_rate, fill, font):
 
 def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
                      sheet_name="CF Summary", divisor=1, unit_suffix="",
-                     all_periods=None, as_of_label=""):
+                     all_periods=None, as_of_label="", current_period=None):
     """Write CF Summary sheet with proper borders and table formatting.
 
-    If `all_periods` is provided (and differs from `periods`), an extra
-    'YTD as of <as_of_label>' column is added summing across all_periods
-    (includes current partial month)."""
+    - If `all_periods` differs from `periods`, adds 'YTD as of <date>' column.
+    - If `current_period` provided, adds 'MTD as of <date>' column showing
+      current month cumulative only."""
     if sheet_name in wb.sheetnames:
         del wb[sheet_name]
     ws = wb.create_sheet(sheet_name)
 
     show_ytd_asof = bool(all_periods) and set(all_periods) != set(periods)
-    extra_cols = 3 if show_ytd_asof else 0
+    show_mtd = bool(current_period)
+    extra_cols = (3 if show_ytd_asof else 0) + (3 if show_mtd else 0)
     last_col = 2 + len(periods) * 3 + 3 + extra_cols
 
     # Title
@@ -135,10 +136,20 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
         for k in range(col, col + 3):
             ws.cell(row=3, column=k).border = BORDER_HEADER
 
+    # MTD as-of column (current partial month only)
+    if show_mtd:
+        col += 3
+        c = ws.cell(row=3, column=col, value=f"MTD as of {as_of_label}")
+        c.fill = HEADER_FILL; c.font = HEADER_FONT
+        c.alignment = CENTER; c.border = BORDER_HEADER
+        ws.merge_cells(start_row=3, start_column=col, end_row=3, end_column=col + 2)
+        for k in range(col, col + 3):
+            ws.cell(row=3, column=k).border = BORDER_HEADER
+
     ws.row_dimensions[3].height = 22
 
-    # Header row 4 - currency sublabels (per month + YTD + optional YTD-as-of)
-    n_blocks = len(periods) + 1 + (1 if show_ytd_asof else 0)
+    # Header row 4 - currency sublabels (per month + YTD + optional YTD/MTD as-of)
+    n_blocks = len(periods) + 1 + (1 if show_ytd_asof else 0) + (1 if show_mtd else 0)
     col = 3
     for _ in range(n_blocks):
         for j, cur in enumerate(("IDR", "USD", "INR")):
@@ -200,6 +211,18 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
                 cell.alignment = RIGHT
                 _apply_style(cell, kind)
 
+        # MTD as-of column (current partial month only)
+        if show_mtd:
+            col += 3
+            idr_m = (line["values"].get(current_period, 0.0) or 0.0) / divisor
+            usd_m = idr_m / usd_rate if usd_rate else 0
+            inr_m = idr_m / inr_rate if inr_rate else 0
+            for j, val in enumerate((idr_m, usd_m, inr_m)):
+                cell = ws.cell(row=r, column=col + j, value=val if val else None)
+                cell.number_format = '#,##0;(#,##0);"-"'
+                cell.alignment = RIGHT
+                _apply_style(cell, kind)
+
         # Zebra striping for leaf rows
         if kind == "leaf" and zebra_toggle:
             for k in range(2, last_col + 1):
@@ -242,6 +265,18 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
         col += 3
         _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate,
                             SECTION_FILL, SECTION_FONT)
+    # MTD as-of BEGINNING: balance at start of current month
+    # (= first-period opening + all prior periods net changes)
+    if show_mtd:
+        col += 3
+        first_open_full = sum(v for (b, p), v in bb_agg.items()
+                              if p == all_periods[0])
+        prior_periods = [p for p in all_periods if p < current_period]
+        prior_net = sum(incoming_sum.get(p, 0) + outflow_sum.get(p, 0)
+                        for p in prior_periods)
+        mtd_open = (first_open_full + prior_net) / divisor
+        _write_currency_row(ws, r, col, mtd_open, usd_rate, inr_rate,
+                            SECTION_FILL, SECTION_FONT)
     r += 1
 
     # ENDING row
@@ -278,6 +313,22 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
         end_all = (first_opening_full + inc_all + out_all) / divisor
         for j, val in enumerate((end_all, end_all / usd_rate if usd_rate else 0,
                                  end_all / inr_rate if inr_rate else 0)):
+            cc = ws.cell(row=r, column=col + j, value=val if val else None)
+            cc.number_format = '#,##0;(#,##0);"-"'
+            cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
+            cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
+
+    # MTD as-of ENDING: MTD opening + this month's net (= current real-time balance)
+    if show_mtd:
+        col += 3
+        first_open_full = sum(v for (b, p), v in bb_agg.items() if p == all_periods[0])
+        prior_periods = [p for p in all_periods if p < current_period]
+        prior_net = sum(incoming_sum.get(p, 0) + outflow_sum.get(p, 0)
+                        for p in prior_periods)
+        cur_net = incoming_sum.get(current_period, 0) + outflow_sum.get(current_period, 0)
+        mtd_end = (first_open_full + prior_net + cur_net) / divisor
+        for j, val in enumerate((mtd_end, mtd_end / usd_rate if usd_rate else 0,
+                                 mtd_end / inr_rate if inr_rate else 0)):
             cc = ws.cell(row=r, column=col + j, value=val if val else None)
             cc.number_format = '#,##0;(#,##0);"-"'
             cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT

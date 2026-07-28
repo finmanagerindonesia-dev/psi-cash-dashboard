@@ -125,17 +125,20 @@ def main():
 
     if completed_periods:
         today_str = datetime.now().strftime("%d %b %Y")
-        print("Writing CF Summary to report (completed months + YTD as-of) ...")
-        # Use `lines` (built from all periods) so YTD-as-of includes partial current month
+        # Current partial month (for MTD column) - only if data exists
+        current_period = today_period if today_period in periods else None
+        print("Writing CF Summary to report (completed months + YTD/MTD as-of) ...")
         write_cf_summary(wb_report, lines, completed_periods,
                          usd_rate, inr_rate, bb_agg,
-                         all_periods=periods, as_of_label=today_str)
+                         all_periods=periods, as_of_label=today_str,
+                         current_period=current_period)
         print("Writing CF Summary (IDR Mio) to report ...")
         write_cf_summary(wb_report, lines, completed_periods,
                          usd_rate, inr_rate, bb_agg,
                          sheet_name="CF Summary (IDR Mio)", divisor=1_000_000,
                          unit_suffix=" (in IDR Million)",
-                         all_periods=periods, as_of_label=today_str)
+                         all_periods=periods, as_of_label=today_str,
+                         current_period=current_period)
     else:
         print("[INFO] No completed months yet - CF Summary sheets skipped.")
 
