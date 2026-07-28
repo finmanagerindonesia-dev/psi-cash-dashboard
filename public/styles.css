@@ -236,6 +236,12 @@ table.cf tr.leaf:hover td{background:rgba(31,56,100,.04)}
 .collapse-btn.secondary{background:#fff;color:var(--brand);
   border:1.5px solid var(--brand2)}
 .collapse-btn.secondary:hover{background:var(--brand);color:#fff}
+/* CF Summary balance rows (BEGINNING/ENDING - must tally with Bank Position) */
+table.cf tr.balance-row td{background:linear-gradient(180deg,rgba(255,236,179,.9),rgba(255,224,130,.9))!important;
+  font-weight:700;color:#7c5e00;border-top:2px solid #d4a017;border-bottom:2px solid #d4a017}
+table.cf tr.balance-row td.amount.pos{color:#0a6a3e}
+table.cf tr.balance-row td.amount.neg{color:#8f1e13}
+
 /* CF Summary interactive tree (click to expand/collapse) */
 tr.cf-expandable{cursor:pointer;user-select:none}
 tr.cf-expandable:hover td{background:rgba(46,92,184,.06)}

@@ -52,6 +52,11 @@ def _apply_style(cell, kind):
         cell.fill = SECTION_TOTAL_FILL
         cell.font = SECTION_TOTAL_FONT
         cell.border = BORDER_TOTAL_TOP
+    elif kind in ("beginning_balance", "ending_balance"):
+        # Yellow highlight for balance rows (tally with Bank Position)
+        cell.fill = PatternFill("solid", fgColor="FFE699")
+        cell.font = Font(bold=True, color="1F3864")
+        cell.border = BORDER_TOTAL_TOP
 
 
 def _write_currency_row(ws, r, col, idr, usd_rate, inr_rate, fill, font):
@@ -188,6 +193,17 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
                 cell.alignment = RIGHT
                 _apply_style(cell, kind)
             col += 3
+        # Override YTD for balance rows (they don't sum - use first/last)
+        if kind == "beginning_balance":
+            idr_ytd = (line["values"].get(periods[0], 0.0) or 0.0) / divisor
+            ytd = {"IDR": idr_ytd,
+                   "USD": idr_ytd / usd_rate if usd_rate else 0,
+                   "INR": idr_ytd / inr_rate if inr_rate else 0}
+        elif kind == "ending_balance":
+            idr_ytd = (line["values"].get(periods[-1], 0.0) or 0.0) / divisor
+            ytd = {"IDR": idr_ytd,
+                   "USD": idr_ytd / usd_rate if usd_rate else 0,
+                   "INR": idr_ytd / inr_rate if inr_rate else 0}
         for j, cur in enumerate(("IDR", "USD", "INR")):
             cell = ws.cell(row=r, column=col + j,
                            value=ytd[cur] if ytd[cur] else None)
@@ -210,12 +226,23 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
         # YTD as-of column SECOND (sum across ALL periods, includes current month)
         if show_ytd_asof:
             col += 3
-            ytd_all = {"IDR": 0.0, "USD": 0.0, "INR": 0.0}
-            for p in all_periods:
-                idr_a = (line["values"].get(p, 0.0) or 0.0) / divisor
-                ytd_all["IDR"] += idr_a
-                ytd_all["USD"] += idr_a / usd_rate if usd_rate else 0
-                ytd_all["INR"] += idr_a / inr_rate if inr_rate else 0
+            if kind == "beginning_balance":
+                idr_a = (line["values"].get(all_periods[0], 0.0) or 0.0) / divisor
+                ytd_all = {"IDR": idr_a,
+                           "USD": idr_a / usd_rate if usd_rate else 0,
+                           "INR": idr_a / inr_rate if inr_rate else 0}
+            elif kind == "ending_balance":
+                idr_a = (line["values"].get(all_periods[-1], 0.0) or 0.0) / divisor
+                ytd_all = {"IDR": idr_a,
+                           "USD": idr_a / usd_rate if usd_rate else 0,
+                           "INR": idr_a / inr_rate if inr_rate else 0}
+            else:
+                ytd_all = {"IDR": 0.0, "USD": 0.0, "INR": 0.0}
+                for p in all_periods:
+                    idr_a = (line["values"].get(p, 0.0) or 0.0) / divisor
+                    ytd_all["IDR"] += idr_a
+                    ytd_all["USD"] += idr_a / usd_rate if usd_rate else 0
+                    ytd_all["INR"] += idr_a / inr_rate if inr_rate else 0
             for j, cur in enumerate(("IDR", "USD", "INR")):
                 cell = ws.cell(row=r, column=col + j,
                                value=ytd_all[cur] if ytd_all[cur] else None)
@@ -234,104 +261,10 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
             zebra_toggle = False
         r += 1
 
-    # Reconciliation block (Beginning + Ending) - placed directly under
-    # the last data row, no empty gap above
-    incoming_sum = defaultdict(float)
-    outflow_sum = defaultdict(float)
-    for line in lines:
-        if line["label"] == "TOTAL INCOMING":
-            for p, v in line["values"].items():
-                incoming_sum[p] += v
-        if line["label"] == "TOTAL OUTFLOW":
-            for p, v in line["values"].items():
-                outflow_sum[p] += v
-
-    # BEGINNING row
-    cell = ws.cell(row=r, column=2, value="BEGINNING BALANCE")
-    cell.fill = SECTION_FILL; cell.font = SECTION_FONT
-    cell.alignment = LEFT; cell.border = BORDER_ALL
-    col = 3
-    for period in periods:
-        opening = sum(v for (b, p), v in bb_agg.items() if p == period) / divisor
-        _write_currency_row(ws, r, col, opening, usd_rate, inr_rate,
-                            SECTION_FILL, SECTION_FONT)
-        col += 3
-    first_opening = sum(v for (b, p), v in bb_agg.items()
-                        if p == periods[0]) / divisor
-    _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate,
-                        SECTION_FILL, SECTION_FONT)
-    # MTD as-of BEGINNING FIRST: balance at start of current month
-    if show_mtd:
-        col += 3
-        first_open_full = sum(v for (b, p), v in bb_agg.items()
-                              if p == all_periods[0])
-        prior_periods = [p for p in all_periods if p < current_period]
-        prior_net = sum(incoming_sum.get(p, 0) + outflow_sum.get(p, 0)
-                        for p in prior_periods)
-        mtd_open = (first_open_full + prior_net) / divisor
-        _write_currency_row(ws, r, col, mtd_open, usd_rate, inr_rate,
-                            SECTION_FILL, SECTION_FONT)
-    # YTD as-of BEGINNING SECOND: same first-period opening
-    if show_ytd_asof:
-        col += 3
-        _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate,
-                            SECTION_FILL, SECTION_FONT)
-    r += 1
-
-    # ENDING row
-    cell = ws.cell(row=r, column=2, value="ENDING BALANCE")
-    cell.fill = SECTION_TOTAL_FILL; cell.font = SECTION_TOTAL_FONT
-    cell.alignment = LEFT; cell.border = BORDER_TOTAL_TOP
-    col = 3
-    ytd_ending = 0.0
-    for period in periods:
-        opening = sum(v for (b, p), v in bb_agg.items() if p == period)
-        net = incoming_sum.get(period, 0) + outflow_sum.get(period, 0)
-        ending = (opening + net) / divisor
-        ytd_ending = ending
-        for j, val in enumerate((ending, ending / usd_rate if usd_rate else 0,
-                                 ending / inr_rate if inr_rate else 0)):
-            cc = ws.cell(row=r, column=col + j, value=val if val else None)
-            cc.number_format = '#,##0;(#,##0);"-"'
-            cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
-            cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
-        col += 3
-    for j, val in enumerate((ytd_ending, ytd_ending / usd_rate if usd_rate else 0,
-                             ytd_ending / inr_rate if inr_rate else 0)):
-        cc = ws.cell(row=r, column=col + j, value=val if val else None)
-        cc.number_format = '#,##0;(#,##0);"-"'
-        cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
-        cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
-
-    # MTD as-of ENDING FIRST: MTD opening + this month's net (= current real-time balance)
-    if show_mtd:
-        col += 3
-        first_open_full = sum(v for (b, p), v in bb_agg.items() if p == all_periods[0])
-        prior_periods = [p for p in all_periods if p < current_period]
-        prior_net = sum(incoming_sum.get(p, 0) + outflow_sum.get(p, 0)
-                        for p in prior_periods)
-        cur_net = incoming_sum.get(current_period, 0) + outflow_sum.get(current_period, 0)
-        mtd_end = (first_open_full + prior_net + cur_net) / divisor
-        for j, val in enumerate((mtd_end, mtd_end / usd_rate if usd_rate else 0,
-                                 mtd_end / inr_rate if inr_rate else 0)):
-            cc = ws.cell(row=r, column=col + j, value=val if val else None)
-            cc.number_format = '#,##0;(#,##0);"-"'
-            cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
-            cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
-
-    # YTD as-of ENDING SECOND: ending of the latest period in all_periods
-    if show_ytd_asof:
-        col += 3
-        first_opening_full = sum(v for (b, p), v in bb_agg.items() if p == all_periods[0])
-        inc_all = sum(incoming_sum.get(p, 0) for p in all_periods)
-        out_all = sum(outflow_sum.get(p, 0) for p in all_periods)
-        end_all = (first_opening_full + inc_all + out_all) / divisor
-        for j, val in enumerate((end_all, end_all / usd_rate if usd_rate else 0,
-                                 end_all / inr_rate if inr_rate else 0)):
-            cc = ws.cell(row=r, column=col + j, value=val if val else None)
-            cc.number_format = '#,##0;(#,##0);"-"'
-            cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
-            cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
+    # BEGINNING and ENDING BALANCE are now in `lines` (built by
+    # build_cf_structure with bb_agg). YTD/MTD as-of for these rows use
+    # first/last-period values instead of sums (handled in main loop above
+    # via kind-specific overrides).
 
     # Column widths
     ws.column_dimensions["A"].width = 2

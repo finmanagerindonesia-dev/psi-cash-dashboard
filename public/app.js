@@ -1543,6 +1543,8 @@ function renderCFSummary(){
       else if(line.kind==="subsection") cls="subsection";
       else if(line.kind==="subtotal_section") cls="subtotal";
       else if(line.kind==="section_total") cls="section_total";
+      else if(line.kind==="beginning_balance") cls="balance-row balance-begin";
+      else if(line.kind==="ending_balance") cls="balance-row balance-end";
       else cls="leaf";
       const m = meta[idx];
       const isExpandable = m.isExpandable;
@@ -1564,6 +1566,12 @@ function renderCFSummary(){
         const ac = v>0 ? "pos" : (v<0 ? "neg" : "zero");
         html += `<td class="amount ${ac}">${fmt(v)}</td>`;
       });
+      // Override YTD for balance rows (they don't sum)
+      if(line.kind === "beginning_balance"){
+        ytd = (line.values && line.values[D.periods[0].key]) || 0;
+      } else if(line.kind === "ending_balance"){
+        ytd = (line.values && line.values[D.periods[D.periods.length-1].key]) || 0;
+      }
       const ac = ytd>0 ? "pos" : (ytd<0 ? "neg" : "zero");
       html += `<td class="amount ${ac}">${fmt(ytd)}</td></tr>`;
     });

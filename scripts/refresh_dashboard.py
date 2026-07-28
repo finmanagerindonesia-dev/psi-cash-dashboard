@@ -108,11 +108,13 @@ def main():
           f"{', '.join(completed_periods) if completed_periods else '(none)'}")
 
     # Build CF Summary structure (completed months only for Excel report)
+    # Pass bb_agg so BEGINNING + ENDING BALANCE rows are included in structure
     print("Building report structures ...")
-    completed_lines = build_cf_structure(agg, completed_periods, rows=rows) if completed_periods else []
+    completed_lines = build_cf_structure(agg, completed_periods, rows=rows,
+                                          bb_agg=bb_agg) if completed_periods else []
 
     # Dashboard always uses ALL periods (Daily View needs current month).
-    lines = build_cf_structure(agg, periods, rows=rows)
+    lines = build_cf_structure(agg, periods, rows=rows, bb_agg=bb_agg)
 
     # ====================================================================
     # Generate SEPARATE report file (PSI Cash Flow Report.xlsx) in public/

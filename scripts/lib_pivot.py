@@ -177,9 +177,11 @@ def has_any_usd_native_data(rows):
     return False
 
 
-def build_cf_structure(agg, periods, rows=None):
+def build_cf_structure(agg, periods, rows=None, bb_agg=None):
     """Build CF Summary line list. Pass `rows` to enable party-level
-    breakdowns under Incoming - Customers and Incoming - Bank Loan."""
+    breakdowns under Incoming - Customers and Incoming - Bank Loan.
+    Pass `bb_agg` (from aggregate_beginning_balance) to add BEGINNING
+    BALANCE row at top and ENDING BALANCE row at bottom."""
     rows = rows or []
     def pull(cat=None, sub=None, det=None):
         out = defaultdict(float)
@@ -208,6 +210,25 @@ def build_cf_structure(agg, periods, rows=None):
     def add(label, kind, values=None, indent=0):
         lines.append({"label": label, "kind": kind, "indent": indent,
                       "values": values or {}})
+
+    # BEGINNING BALANCE at the top (must tally with Bank Position section)
+    if bb_agg and periods:
+        first_period = periods[0]
+        # Sum BB entries for first period = actual Jan 1 opening
+        first_opening = sum(v for (b, p), v in bb_agg.items() if p == first_period)
+        # Compute beginning per period using cumulative carry-forward
+        # (same logic as _build_bank_matrix so numbers tally)
+        beg_vals = {}
+        cur = first_opening
+        for p in periods:
+            beg_vals[p] = cur
+            per_inc = sum(v for (per, c, s, d), v in agg.items()
+                          if per == p and c == "Incoming")
+            per_out = sum(v for (per, c, s, d), v in agg.items()
+                          if per == p and c and c.startswith("Outflow"))
+            cur = cur + per_inc + per_out
+        add("BEGINNING BALANCE", "beginning_balance", beg_vals)
+        add("", "blank")
 
     add("INCOMING", "section_header")
     incoming_dets = ["Incoming - Customers", "Incoming - Bank Loan", "Incoming - Others"]
@@ -446,5 +467,17 @@ def build_cf_structure(agg, periods, rows=None):
     inc = pull(cat="Incoming")
     net = {p: inc.get(p, 0) + outflow_total.get(p, 0) for p in periods}
     add("NET CASH SURPLUS (LOSS)", "section_total", net)
+
+    # ENDING BALANCE at the bottom (BEGINNING + NET = ENDING)
+    if bb_agg and periods:
+        first_period = periods[0]
+        first_opening = sum(v for (b, p), v in bb_agg.items() if p == first_period)
+        end_vals = {}
+        cur = first_opening
+        for p in periods:
+            cur = cur + inc.get(p, 0) + outflow_total.get(p, 0)
+            end_vals[p] = cur
+        add("", "blank")
+        add("ENDING BALANCE", "ending_balance", end_vals)
 
     return lines
