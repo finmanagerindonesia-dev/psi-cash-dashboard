@@ -236,8 +236,15 @@ table.cf tr.leaf:hover td{background:rgba(31,56,100,.04)}
 .collapse-btn.secondary{background:#fff;color:var(--brand);
   border:1.5px solid var(--brand2)}
 .collapse-btn.secondary:hover{background:var(--brand);color:#fff}
-/* Toggle Incoming party rows visibility in CF Summary detail table */
-.hide-incoming-parties tr.incoming-party{display:none}
+/* CF Summary interactive tree (click to expand/collapse) */
+tr.cf-expandable{cursor:pointer;user-select:none}
+tr.cf-expandable:hover td{background:rgba(46,92,184,.06)}
+tr.cf-expandable .cf-arrow{display:inline-block;width:12px;color:var(--brand);
+  font-size:10px;margin-right:6px;transition:transform .15s;transform:rotate(90deg);
+  vertical-align:middle}
+tr.cf-expandable.cf-collapsed .cf-arrow{transform:rotate(0deg)}
+tr:not(.cf-expandable) .cf-arrow{width:12px;margin-right:6px}
+.cf-cell-label{display:table-cell}
 .download-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;
   background:linear-gradient(180deg,#0a8754,#0a7a48);color:#fff;border:0;
   border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;min-height:34px;

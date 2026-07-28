@@ -1479,7 +1479,8 @@ function renderCFSummary(){
         <a class="download-btn" href="${reportUrl}" download="PSI Cash Flow Report.xlsx" title="Download full Excel report">
           <span style="font-size:13px">⬇</span> Download Excel
         </a>
-        <button class="collapse-btn secondary" id="incomingToggle" title="Toggle Incoming party breakdown">Hide Incoming Parties</button>
+        <button class="collapse-btn secondary" id="cfExpandAll" title="Expand all rows">Expand All</button>
+        <button class="collapse-btn secondary" id="cfCollapseAll" title="Collapse to top level">Collapse All</button>
         <button class="collapse-btn" id="cfToggle">Show Details</button>
       </div>
     </h2>
@@ -1489,32 +1490,53 @@ function renderCFSummary(){
     body.classList.toggle("hidden");
     e.target.textContent = body.classList.contains("hidden") ? "Show Details" : "Hide";
   };
-  // Incoming parties toggle - default HIDDEN (button label = Show)
-  const incomingBtn = card.querySelector("#incomingToggle");
-  incomingBtn.textContent = "Show Incoming Parties";
-  incomingBtn.onclick = (e) => {
-    const body = card.querySelector("#cf_body");
-    body.classList.toggle("hide-incoming-parties");
-    e.target.textContent = body.classList.contains("hide-incoming-parties")
-      ? "Show Incoming Parties" : "Hide Incoming Parties";
+  card.querySelector("#cfExpandAll").onclick = () => {
+    card.querySelectorAll("#cf_body tr.cf-expandable").forEach(r => r.classList.remove("cf-collapsed"));
+    updateCFRowVisibility(card);
   };
+  card.querySelector("#cfCollapseAll").onclick = () => {
+    // Collapse everything at level >= 1 (keep top-level open)
+    card.querySelectorAll("#cf_body tr.cf-expandable").forEach(r => {
+      if (parseInt(r.dataset.level || "0") >= 1) r.classList.add("cf-collapsed");
+    });
+    updateCFRowVisibility(card);
+  };
+
   setTimeout(()=>{
+    // Pre-compute parent + expandable for each line
+    const meta = [];
+    D.cf_summary.forEach((line, idx) => {
+      if(line.kind === "blank"){
+        meta.push({parentIdx: -1, isExpandable: false, level: -1});
+        return;
+      }
+      const myLevel = line.indent || 0;
+      // Parent = previous non-blank line with lower indent
+      let parentIdx = -1;
+      for(let j = idx - 1; j >= 0; j--){
+        const prev = D.cf_summary[j];
+        if(prev.kind === "blank") continue;
+        if((prev.indent || 0) < myLevel){ parentIdx = j; break; }
+      }
+      // Expandable = has direct children (next line at higher indent, before same-or-lower)
+      let isExpandable = false;
+      for(let j = idx + 1; j < D.cf_summary.length; j++){
+        const nxt = D.cf_summary[j];
+        if(nxt.kind === "blank") continue;
+        const nl = nxt.indent || 0;
+        if(nl > myLevel){ isExpandable = true; break; }
+        if(nl <= myLevel) break;
+      }
+      meta.push({parentIdx, isExpandable, level: myLevel});
+    });
+
     let html = `<table class="cf"><thead><tr><th>Particular</th>`;
     D.periods.forEach(p=>html += `<th>${escapeHtml(p.label_short)}</th>`);
     html += `<th>YTD</th></tr></thead><tbody>`;
-    let inIncoming = false;
-    D.cf_summary.forEach(line=>{
+    D.cf_summary.forEach((line, idx)=>{
       if(line.kind==="blank"){
         html += `<tr><td colspan="${D.periods.length+2}" style="border:0;padding:4px"></td></tr>`;
         return;
-      }
-      // Track whether we're inside INCOMING section (before TOTAL INCOMING)
-      const lbl = String(line.label || "");
-      if(line.kind === "section_header" && lbl === "INCOMING"){
-        inIncoming = true;
-      } else if(line.kind === "section_header" || lbl === "TOTAL INCOMING"){
-        // Any other section header, or the total-incoming line itself, ends incoming
-        if(lbl !== "INCOMING") inIncoming = false;
       }
       let cls;
       if(line.kind==="section_header") cls="section";
@@ -1522,11 +1544,19 @@ function renderCFSummary(){
       else if(line.kind==="subtotal_section") cls="subtotal";
       else if(line.kind==="section_total") cls="section_total";
       else cls="leaf";
-      // Mark party rows (indent=2 leaves) within INCOMING for hide toggle
-      const isIncomingParty = inIncoming && line.kind === "leaf" && line.indent === 2;
-      if(isIncomingParty) cls += " incoming-party";
-      const indent = line.indent ? `indent-${Math.min(3,line.indent)}` : "";
-      html += `<tr class="${cls}"><td class="${indent}">${escapeHtml(line.label)}</td>`;
+      const m = meta[idx];
+      const isExpandable = m.isExpandable;
+      // Default: collapse everything at level >= 1
+      const defaultCollapsed = isExpandable && m.level >= 1;
+      if(isExpandable) cls += " cf-expandable";
+      if(defaultCollapsed) cls += " cf-collapsed";
+      const indent = m.level > 0 ? `indent-${Math.min(3, m.level)}` : "";
+      const clickAttr = isExpandable ? `onclick="toggleCFRow(this)"` : "";
+      const arrow = isExpandable
+        ? '<span class="cf-arrow">&#9656;</span>'
+        : '<span class="cf-arrow" style="visibility:hidden">&#9656;</span>';
+      html += `<tr class="${cls}" data-idx="${idx}" data-parent-idx="${m.parentIdx}" data-level="${m.level}" ${clickAttr}>`;
+      html += `<td class="${indent} cf-cell-label">${arrow}${escapeHtml(line.label)}</td>`;
       let ytd = 0;
       D.periods.forEach(p=>{
         const v = (line.values && line.values[p.key]) || 0;
@@ -1540,10 +1570,38 @@ function renderCFSummary(){
     html += `</tbody></table>`;
     const cfBody = document.getElementById("cf_body");
     cfBody.innerHTML = html;
-    // Default: hide incoming parties
-    cfBody.classList.add("hide-incoming-parties");
+    updateCFRowVisibility(card);
   }, 10);
   return card;
+}
+
+function toggleCFRow(row){
+  row.classList.toggle("cf-collapsed");
+  updateCFRowVisibility(row.closest(".card"));
+}
+window.toggleCFRow = toggleCFRow;
+
+function updateCFRowVisibility(cardEl){
+  const rows = cardEl.querySelectorAll("#cf_body tr[data-idx]");
+  // Build map of collapsed rows
+  const collapsedSet = new Set();
+  rows.forEach(r => {
+    if(r.classList.contains("cf-collapsed")) collapsedSet.add(r.dataset.idx);
+  });
+  // For each row, hide if ANY ancestor is collapsed
+  rows.forEach(r => {
+    let cur = r.dataset.parentIdx;
+    let hidden = false;
+    const visited = new Set();
+    while(cur && cur !== "-1" && !visited.has(cur)){
+      visited.add(cur);
+      if(collapsedSet.has(cur)){ hidden = true; break; }
+      const parent = cardEl.querySelector(`tr[data-idx="${cur}"]`);
+      if(!parent) break;
+      cur = parent.dataset.parentIdx;
+    }
+    r.style.display = hidden ? "none" : "";
+  });
 }
 
 document.getElementById("curgrp").addEventListener("click", (e)=>{
