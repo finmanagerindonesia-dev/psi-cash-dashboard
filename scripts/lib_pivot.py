@@ -211,21 +211,19 @@ def build_cf_structure(agg, periods, rows=None):
 
     add("INCOMING", "section_header")
     incoming_dets = ["Incoming - Customers", "Incoming - Bank Loan", "Incoming - Others"]
-    breakdown_dets = {"Incoming - Customers", "Incoming - Bank Loan"}
     for det in incoming_dets:
         add(det, "leaf", pull(cat="Incoming", det=det), indent=1)
-        # Add party-level breakdown under Customers and Bank Loan
-        if det in breakdown_dets:
-            parties_data = {}
-            for r in rows:
-                if (r.get("category") == "Incoming"
-                        and r.get("detail_category") == det
-                        and r.get("period") and r.get("parties")):
-                    parties_data.setdefault(r["parties"], defaultdict(float))[r["period"]] += r["amount"]
-            sorted_parties = sorted(parties_data.items(),
-                                    key=lambda x: -sum(x[1].values()))
-            for party, p_vals in sorted_parties:
-                add(party, "leaf", dict(p_vals), indent=2)
+        # Add party-level breakdown under ALL Incoming detail categories
+        parties_data = {}
+        for r in rows:
+            if (r.get("category") == "Incoming"
+                    and r.get("detail_category") == det
+                    and r.get("period") and r.get("parties")):
+                parties_data.setdefault(r["parties"], defaultdict(float))[r["period"]] += r["amount"]
+        sorted_parties = sorted(parties_data.items(),
+                                key=lambda x: -abs(sum(x[1].values())))
+        for party, p_vals in sorted_parties:
+            add(party, "leaf", dict(p_vals), indent=2)
     extra = sorted({d for (p, c, s, d), v in agg.items()
                     if c == "Incoming" and d not in incoming_dets})
     for det in extra:
@@ -312,6 +310,17 @@ def build_cf_structure(agg, periods, rows=None):
         add("INTERCOMPANY LOAN REPAYMENT", "subsection", indent=1)
         for det in repayment_dets:
             add(det, "leaf", _pull_pred(_is_intercompany_repayment, det), indent=2)
+            # Party-level breakdown under each intercompany detail category
+            parties_data = {}
+            for r in rows:
+                if (_is_intercompany_repayment(r.get("category"), r.get("detail_category"))
+                        and r.get("detail_category") == det
+                        and r.get("period") and r.get("parties")):
+                    parties_data.setdefault(r["parties"], defaultdict(float))[r["period"]] += r["amount"]
+            sorted_parties = sorted(parties_data.items(),
+                                    key=lambda x: sum(x[1].values()))  # most negative first
+            for party, p_vals in sorted_parties:
+                add(party, "leaf", dict(p_vals), indent=3)
         add("TOTAL INTERCOMPANY LOAN REPAYMENT", "subtotal_section",
             _pull_pred(_is_intercompany_repayment), indent=1)
         add("", "blank")
