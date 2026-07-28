@@ -66,13 +66,20 @@ def _write_currency_row(ws, r, col, idr, usd_rate, inr_rate, fill, font):
 
 
 def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
-                     sheet_name="CF Summary", divisor=1, unit_suffix=""):
-    """Write CF Summary sheet with proper borders and table formatting."""
+                     sheet_name="CF Summary", divisor=1, unit_suffix="",
+                     all_periods=None, as_of_label=""):
+    """Write CF Summary sheet with proper borders and table formatting.
+
+    If `all_periods` is provided (and differs from `periods`), an extra
+    'YTD as of <as_of_label>' column is added summing across all_periods
+    (includes current partial month)."""
     if sheet_name in wb.sheetnames:
         del wb[sheet_name]
     ws = wb.create_sheet(sheet_name)
 
-    last_col = 2 + len(periods) * 3 + 3
+    show_ytd_asof = bool(all_periods) and set(all_periods) != set(periods)
+    extra_cols = 3 if show_ytd_asof else 0
+    last_col = 2 + len(periods) * 3 + 3 + extra_cols
 
     # Title
     title_cell = ws.cell(row=1, column=2, value="PT Prasad Seeds Indonesia")
@@ -118,11 +125,22 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
     for k in range(col, col + 3):
         ws.cell(row=3, column=k).border = BORDER_HEADER
 
+    # Extra YTD-as-of column (includes current partial month)
+    if show_ytd_asof:
+        col += 3
+        c = ws.cell(row=3, column=col, value=f"YTD as of {as_of_label}")
+        c.fill = HEADER_FILL; c.font = HEADER_FONT
+        c.alignment = CENTER; c.border = BORDER_HEADER
+        ws.merge_cells(start_row=3, start_column=col, end_row=3, end_column=col + 2)
+        for k in range(col, col + 3):
+            ws.cell(row=3, column=k).border = BORDER_HEADER
+
     ws.row_dimensions[3].height = 22
 
-    # Header row 4 - currency sublabels
+    # Header row 4 - currency sublabels (per month + YTD + optional YTD-as-of)
+    n_blocks = len(periods) + 1 + (1 if show_ytd_asof else 0)
     col = 3
-    for _ in range(len(periods) + 1):
+    for _ in range(n_blocks):
         for j, cur in enumerate(("IDR", "USD", "INR")):
             c = ws.cell(row=4, column=col + j, value=cur)
             c.fill = HEADER_FILL; c.font = HEADER_FONT
@@ -166,6 +184,22 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
             cell.alignment = RIGHT
             _apply_style(cell, kind)
 
+        # YTD as-of column (sum across ALL periods, includes current month)
+        if show_ytd_asof:
+            col += 3
+            ytd_all = {"IDR": 0.0, "USD": 0.0, "INR": 0.0}
+            for p in all_periods:
+                idr_a = (line["values"].get(p, 0.0) or 0.0) / divisor
+                ytd_all["IDR"] += idr_a
+                ytd_all["USD"] += idr_a / usd_rate if usd_rate else 0
+                ytd_all["INR"] += idr_a / inr_rate if inr_rate else 0
+            for j, cur in enumerate(("IDR", "USD", "INR")):
+                cell = ws.cell(row=r, column=col + j,
+                               value=ytd_all[cur] if ytd_all[cur] else None)
+                cell.number_format = '#,##0;(#,##0);"-"'
+                cell.alignment = RIGHT
+                _apply_style(cell, kind)
+
         # Zebra striping for leaf rows
         if kind == "leaf" and zebra_toggle:
             for k in range(2, last_col + 1):
@@ -203,6 +237,11 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
                         if p == periods[0]) / divisor
     _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate,
                         SECTION_FILL, SECTION_FONT)
+    # YTD as-of column for BEGINNING: same first-period opening
+    if show_ytd_asof:
+        col += 3
+        _write_currency_row(ws, r, col, first_opening, usd_rate, inr_rate,
+                            SECTION_FILL, SECTION_FONT)
     r += 1
 
     # ENDING row
@@ -229,6 +268,20 @@ def write_cf_summary(wb, lines, periods, usd_rate, inr_rate, bb_agg,
         cc.number_format = '#,##0;(#,##0);"-"'
         cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
         cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
+
+    # YTD as-of ENDING: ending of the latest period in all_periods
+    if show_ytd_asof:
+        col += 3
+        first_opening_full = sum(v for (b, p), v in bb_agg.items() if p == all_periods[0])
+        inc_all = sum(incoming_sum.get(p, 0) for p in all_periods)
+        out_all = sum(outflow_sum.get(p, 0) for p in all_periods)
+        end_all = (first_opening_full + inc_all + out_all) / divisor
+        for j, val in enumerate((end_all, end_all / usd_rate if usd_rate else 0,
+                                 end_all / inr_rate if inr_rate else 0)):
+            cc = ws.cell(row=r, column=col + j, value=val if val else None)
+            cc.number_format = '#,##0;(#,##0);"-"'
+            cc.fill = SECTION_TOTAL_FILL; cc.font = SECTION_TOTAL_FONT
+            cc.border = BORDER_TOTAL_TOP; cc.alignment = RIGHT
 
     # Column widths
     ws.column_dimensions["A"].width = 2

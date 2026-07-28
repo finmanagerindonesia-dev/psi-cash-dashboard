@@ -124,14 +124,18 @@ def main():
         wb_report.remove(wb_report["Sheet"])
 
     if completed_periods:
-        print("Writing CF Summary to report (completed months only) ...")
-        write_cf_summary(wb_report, completed_lines, completed_periods,
-                         usd_rate, inr_rate, bb_agg)
+        today_str = datetime.now().strftime("%d %b %Y")
+        print("Writing CF Summary to report (completed months + YTD as-of) ...")
+        # Use `lines` (built from all periods) so YTD-as-of includes partial current month
+        write_cf_summary(wb_report, lines, completed_periods,
+                         usd_rate, inr_rate, bb_agg,
+                         all_periods=periods, as_of_label=today_str)
         print("Writing CF Summary (IDR Mio) to report ...")
-        write_cf_summary(wb_report, completed_lines, completed_periods,
+        write_cf_summary(wb_report, lines, completed_periods,
                          usd_rate, inr_rate, bb_agg,
                          sheet_name="CF Summary (IDR Mio)", divisor=1_000_000,
-                         unit_suffix=" (in IDR Million)")
+                         unit_suffix=" (in IDR Million)",
+                         all_periods=periods, as_of_label=today_str)
     else:
         print("[INFO] No completed months yet - CF Summary sheets skipped.")
 
