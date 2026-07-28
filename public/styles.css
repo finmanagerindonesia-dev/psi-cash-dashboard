@@ -233,6 +233,11 @@ table.cf tr.leaf:hover td{background:rgba(31,56,100,.04)}
 .empty{padding:30px;text-align:center;color:var(--muted)}
 .collapse-btn{padding:7px 12px;background:var(--brand);color:#fff;border:0;
   border-radius:8px;cursor:pointer;font-weight:600;font-size:12px;min-height:34px}
+.collapse-btn.secondary{background:#fff;color:var(--brand);
+  border:1.5px solid var(--brand2)}
+.collapse-btn.secondary:hover{background:var(--brand);color:#fff}
+/* Toggle Incoming party rows visibility in CF Summary detail table */
+.hide-incoming-parties tr.incoming-party{display:none}
 .download-btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;
   background:linear-gradient(180deg,#0a8754,#0a7a48);color:#fff;border:0;
   border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;min-height:34px;
