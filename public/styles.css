@@ -37,6 +37,10 @@ header::before{content:"";position:absolute;inset:0;background:
 .header-inner{max-width:1500px;margin:0 auto;padding:22px 28px 24px;position:relative}
 .header-top{display:flex;justify-content:space-between;align-items:center;
   gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.brand-block{display:flex;align-items:center;gap:12px}
+.header-logo{height:38px;width:auto;object-fit:contain;
+  filter:drop-shadow(0 2px 6px rgba(0,0,0,.25));
+  background:rgba(255,255,255,.95);padding:5px 10px;border-radius:10px}
 .company-pill{display:inline-block;background:rgba(0,0,0,.28);color:#fff;
   padding:6px 14px;border-radius:18px;font-size:11.5px;font-weight:700;
   letter-spacing:.6px;text-transform:uppercase;
@@ -363,14 +367,18 @@ table.tx td.amt.neg{color:var(--neg)}
 
 /* Password gate */
 .pw-gate{position:fixed;inset:0;
-  background:linear-gradient(135deg,#1f3864 0%,#2e5cb8 100%);
-  display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
-.pw-card{background:rgba(255,255,255,.92);border-radius:18px;padding:36px 32px;
+  background:linear-gradient(135deg,#0e1f44 0%,#1f3864 45%,#1e6f8a 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:9999;padding:20px;gap:22px}
+.pw-brand{display:flex;justify-content:center;align-items:center;max-width:420px;width:100%}
+.pw-brand-logo{max-width:280px;max-height:120px;width:auto;height:auto;
+  object-fit:contain;filter:drop-shadow(0 6px 20px rgba(0,0,0,.35))}
+.pw-card{background:rgba(255,255,255,.92);border-radius:18px;padding:32px 32px 28px;
   max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center;
   backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
   border:1px solid rgba(255,255,255,.6)}
 .pw-logo{display:flex;justify-content:center;color:var(--brand);margin-bottom:16px}
-.pw-card h1{margin:0 0 10px;font-size:20px;color:var(--brand)}
+.pw-card h1{margin:0 0 10px;font-size:22px;color:var(--brand);font-weight:700}
 .pw-card p{margin:0 0 20px}
 .pw-card p.small{font-size:11.5px;margin-top:18px;margin-bottom:0}
 .pw-card form{display:flex;flex-direction:column;gap:10px}
@@ -475,6 +483,9 @@ table.tx td.amt.neg{color:var(--neg)}
   .header-inner{padding:16px 14px 18px}
   .header-top{margin-bottom:10px;gap:10px}
   .company-pill{font-size:10.5px;padding:5px 11px;letter-spacing:.4px}
+  .brand-block{gap:8px}
+  .header-logo{height:32px;padding:4px 8px;border-radius:8px}
+  .pw-brand-logo{max-width:220px;max-height:90px}
   .dashboard-title{font-size:18px;line-height:1.25}
   .title-light{display:block;font-size:14px;opacity:.85;margin-top:2px}
   .title-sep{display:none}
