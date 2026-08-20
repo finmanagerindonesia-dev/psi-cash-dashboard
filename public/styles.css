@@ -1,17 +1,30 @@
 /* PSI Cash Flow Dashboard - Liquid Glass UI + Mobile Responsive
    Inspired by iOS 26 / macOS Tahoe design language */
 :root{
-  --brand:#1f3864; --brand2:#2e5cb8; --brand3:#5378c5;
-  --bg:#eef2f9;
-  --card:rgba(255,255,255,.72);
-  --card-strong:rgba(255,255,255,.92);
-  --line:rgba(31,56,100,.10);
-  --text:#1a1f36; --muted:#6b7280;
-  --pos:#0a8754; --pos-bg:rgba(10,135,84,.10);
-  --neg:#c0392b; --neg-bg:rgba(192,57,43,.10);
-  --warn:#b45309; --warn-bg:rgba(180,83,9,.12);
-  --shadow:0 2px 8px rgba(20,30,80,.06),0 16px 36px rgba(20,30,80,.07);
-  --shadow-lg:0 4px 14px rgba(20,30,80,.08),0 24px 60px rgba(20,30,80,.10);
+  /* Pantone palette:
+     Ice Melt 13-4306   - soft pastel teal/cyan  (#C8DDDA)
+     Lemon Icing 11-0515 - pale creamy yellow    (#F0EBB6)
+     Cloud Dancer 11-4201 - warm off-white       (#F1EDE4) */
+  --ice-melt:#C8DDDA;
+  --ice-melt-soft:#E4EEED;
+  --ice-melt-mid:#8FB5B1;
+  --ice-melt-dark:#5F8B87;
+  --lemon-icing:#F0EBB6;
+  --lemon-icing-soft:#F8F5D6;
+  --cloud-dancer:#F1EDE4;
+  --cloud-dancer-warm:#E8E3D6;
+
+  --brand:#3D6B70;   --brand2:#5F8B87;   --brand3:#8FB5B1;
+  --bg:#F1EDE4;      /* Cloud Dancer */
+  --card:rgba(255,255,255,.78);
+  --card-strong:rgba(255,255,255,.94);
+  --line:rgba(61,107,112,.15);
+  --text:#2E3B47; --muted:#7A8590;
+  --pos:#4A8A5E; --pos-bg:rgba(74,138,94,.12);
+  --neg:#B24040; --neg-bg:rgba(178,64,64,.12);
+  --warn:#A67B4A; --warn-bg:rgba(240,235,182,.55);
+  --shadow:0 2px 8px rgba(61,107,112,.08),0 16px 36px rgba(61,107,112,.09);
+  --shadow-lg:0 4px 14px rgba(61,107,112,.10),0 24px 60px rgba(61,107,112,.13);
   --r:14px;
   --glass-blur:saturate(180%) blur(22px);
 }
@@ -20,16 +33,16 @@ html,body{margin:0;padding:0;color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   font-size:14px;line-height:1.45;
   background:
-    radial-gradient(1200px 600px at 0% -10%, rgba(46,92,184,.18), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(30,111,138,.18), transparent 60%),
-    radial-gradient(700px 400px at 100% 100%, rgba(31,56,100,.12), transparent 60%),
+    radial-gradient(1200px 600px at 0% -10%, rgba(200,221,218,.55), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(240,235,182,.40), transparent 60%),
+    radial-gradient(700px 400px at 100% 100%, rgba(143,181,177,.30), transparent 60%),
     var(--bg);
   min-height:100vh}
 button,select,input{font-family:inherit}
 
-/* Header - glass + vibrant gradient */
-header{background:linear-gradient(120deg,#0e1f44 0%,#1f3864 40%,#1e6f8a 100%);
-  color:#fff;box-shadow:0 6px 24px rgba(14,31,68,.18);position:relative;overflow:hidden}
+/* Header - glass + Pantone teal gradient */
+header{background:linear-gradient(120deg,#2C4A4E 0%,#3D6B70 40%,#5F8B87 100%);
+  color:#fff;box-shadow:0 6px 24px rgba(61,107,112,.22);position:relative;overflow:hidden}
 header::before{content:"";position:absolute;inset:0;background:
   radial-gradient(circle at 20% 30%, rgba(255,255,255,.10), transparent 40%),
   radial-gradient(circle at 80% 80%, rgba(255,255,255,.06), transparent 40%);
@@ -240,11 +253,11 @@ table.cf tr.leaf:hover td{background:rgba(31,56,100,.04)}
 .collapse-btn.secondary{background:#fff;color:var(--brand);
   border:1.5px solid var(--brand2)}
 .collapse-btn.secondary:hover{background:var(--brand);color:#fff}
-/* CF Summary balance rows (BEGINNING/ENDING - must tally with Bank Position) */
-table.cf tr.balance-row td{background:linear-gradient(180deg,rgba(255,236,179,.9),rgba(255,224,130,.9))!important;
-  font-weight:700;color:#7c5e00;border-top:2px solid #d4a017;border-bottom:2px solid #d4a017}
-table.cf tr.balance-row td.amount.pos{color:#0a6a3e}
-table.cf tr.balance-row td.amount.neg{color:#8f1e13}
+/* CF Summary balance rows (BEGINNING/ENDING - Pantone Lemon Icing) */
+table.cf tr.balance-row td{background:linear-gradient(180deg,var(--lemon-icing),var(--lemon-icing-soft))!important;
+  font-weight:700;color:#5D4A18;border-top:2px solid #C9B75E;border-bottom:2px solid #C9B75E}
+table.cf tr.balance-row td.amount.pos{color:#3D6B4A}
+table.cf tr.balance-row td.amount.neg{color:#8F3838}
 
 /* CF Summary interactive tree (click to expand/collapse) */
 tr.cf-expandable{cursor:pointer;user-select:none}
@@ -367,7 +380,7 @@ table.tx td.amt.neg{color:var(--neg)}
 
 /* Password gate */
 .pw-gate{position:fixed;inset:0;
-  background:linear-gradient(135deg,#0e1f44 0%,#1f3864 45%,#1e6f8a 100%);
+  background:linear-gradient(135deg,#2C4A4E 0%,#3D6B70 45%,#5F8B87 100%);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   z-index:9999;padding:20px;gap:22px}
 .pw-brand{display:flex;justify-content:center;align-items:center;max-width:420px;width:100%}
