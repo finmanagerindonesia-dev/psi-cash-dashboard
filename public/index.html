@@ -8,9 +8,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PSI Cash">
 <meta name="mobile-web-app-capable" content="yes">
-<link rel="icon" type="image/png" href="logo-header.png">
-<link rel="shortcut icon" type="image/png" href="logo-header.png">
-<link rel="apple-touch-icon" href="logo-header.png">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="512x512" href="favicon-512.png">
+<link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="favicon-512.png">
 <title>PSI Cash Flow Dashboard</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="styles.css">
@@ -37,25 +39,21 @@
 
 <header>
   <div class="header-inner">
-    <div class="header-top">
-      <div class="brand-block">
-        <img src="logo-header.png" alt="PT Prasad Seeds Indonesia" class="header-logo">
-        <span class="company-pill hidden" id="company" aria-hidden="true"></span>
-      </div>
-      <div class="header-controls">
-        <div class="btn-grp" id="curgrp">
-          <button class="active" data-cur="IDR"><span class="cur-sym">Rp</span> IDR</button>
-          <button data-cur="USD"><span class="cur-sym">$</span> USD</button>
-          <button data-cur="INR"><span class="cur-sym">₹</span> INR</button>
-        </div>
-        <button id="logoutBtn" class="logout-btn hidden" title="Log out">Logout</button>
-      </div>
+    <img src="logo-header.png" alt="PT Prasad Seeds Indonesia" class="header-logo">
+    <div class="header-titles">
+      <h1 class="dashboard-title">Cash Flow Dashboard</h1>
+      <div class="header-sub"><span id="stamp">Loading data...</span></div>
+      <div class="rate-note" id="rateNote"></div>
     </div>
-    <h1 class="dashboard-title">Cash Flow Dashboard <span class="title-sep">—</span> <span class="title-light">Daily &amp; Monthly Monitoring</span></h1>
-    <div class="header-sub">
-      <span id="stamp">Loading data...</span>
+    <div class="header-controls">
+      <div class="btn-grp" id="curgrp">
+        <button class="active" data-cur="IDR"><span class="cur-sym">Rp</span> IDR</button>
+        <button data-cur="USD"><span class="cur-sym">$</span> USD</button>
+        <button data-cur="INR"><span class="cur-sym">₹</span> INR</button>
+      </div>
+      <button id="logoutBtn" class="logout-btn hidden" title="Log out">Logout</button>
     </div>
-    <div class="rate-note" id="rateNote"></div>
+    <span class="company-pill hidden" id="company" aria-hidden="true"></span>
   </div>
 </header>
 

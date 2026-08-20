@@ -41,52 +41,50 @@ html,body{margin:0;padding:0;color:var(--text);
 button,select,input{font-family:inherit}
 
 /* Header - glass + Pantone teal gradient */
-header{background:linear-gradient(120deg,#1F3644 0%,#2E4C60 40%,#3F627A 100%);
-  color:#fff;box-shadow:0 6px 24px rgba(61,107,112,.22);position:relative;overflow:hidden}
-header::before{content:"";position:absolute;inset:0;background:
-  radial-gradient(circle at 20% 30%, rgba(255,255,255,.10), transparent 40%),
-  radial-gradient(circle at 80% 80%, rgba(255,255,255,.06), transparent 40%);
-  pointer-events:none}
-.header-inner{max-width:1500px;margin:0 auto;padding:22px 28px 24px;position:relative}
-.header-top{display:flex;justify-content:space-between;align-items:center;
-  gap:16px;margin-bottom:18px;flex-wrap:wrap}
-.brand-block{display:flex;align-items:center;gap:12px}
-.header-logo{height:38px;width:auto;object-fit:contain;
-  filter:drop-shadow(0 2px 6px rgba(0,0,0,.25));
-  background:rgba(255,255,255,.95);padding:5px 10px;border-radius:10px}
+header{background:transparent;color:var(--text);position:relative;padding:18px 0 6px}
+.header-inner{max-width:1500px;margin:0 auto;padding:14px 22px;position:relative;
+  display:flex;align-items:center;gap:18px;
+  background:rgba(255,255,255,.85);
+  border:1px solid var(--line);
+  border-radius:18px;
+  box-shadow:0 6px 24px rgba(31,54,68,.10);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  flex-wrap:wrap}
+.header-logo{height:44px;width:auto;object-fit:contain;flex-shrink:0}
+.header-titles{flex:1;min-width:220px}
 .company-pill{display:inline-block;background:rgba(0,0,0,.28);color:#fff;
   padding:6px 14px;border-radius:18px;font-size:11.5px;font-weight:700;
   letter-spacing:.6px;text-transform:uppercase;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border:1px solid rgba(255,255,255,.12)}
 .header-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.dashboard-title{margin:0;font-size:26px;font-weight:700;letter-spacing:.2px;
-  line-height:1.2}
-.title-sep{opacity:.5;font-weight:400;margin:0 4px}
-.title-light{font-weight:400;opacity:.92}
-.header-sub{font-size:13px;opacity:.9;margin-top:8px}
-.rate-note{font-size:12px;font-style:italic;opacity:.78;margin-top:3px;display:none}
+.dashboard-title{margin:0;font-size:20px;font-weight:700;letter-spacing:.2px;
+  line-height:1.2;color:var(--text)}
+.title-sep{display:none}
+.title-light{display:none}
+.header-sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+.rate-note{font-size:11.5px;font-style:italic;color:var(--muted);margin-top:2px;display:none}
+.header-controls{display:flex;align-items:center;gap:10px;flex-shrink:0;margin-left:auto}
 .rate-note.show{display:block}
 .stamp{display:inline}
 
 /* Currency toggle - glass pill */
-.btn-grp{display:inline-flex;background:rgba(255,255,255,.14);border-radius:22px;
+.btn-grp{display:inline-flex;background:rgba(200,221,218,.35);border-radius:22px;
   padding:4px;gap:2px;
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid rgba(255,255,255,.18)}
-.btn-grp button{background:transparent;color:#fff;border:0;padding:7px 14px;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line)}
+.btn-grp button{background:transparent;color:var(--muted);border:0;padding:7px 14px;
   border-radius:18px;cursor:pointer;font-weight:600;font-size:12.5px;
   display:inline-flex;align-items:center;gap:4px;transition:all .15s;
   min-height:34px}
-.btn-grp button:hover:not(.active){background:rgba(255,255,255,.12)}
-.btn-grp button.active{background:#fff;color:var(--brand);
-  box-shadow:0 1px 4px rgba(0,0,0,.12),inset 0 1px 0 rgba(255,255,255,.5)}
+.btn-grp button:hover:not(.active){background:rgba(255,255,255,.6);color:var(--text)}
+.btn-grp button.active{background:#1F3644;color:#fff;
+  box-shadow:0 1px 4px rgba(31,54,68,.25)}
 .btn-grp button .cur-sym{font-weight:700}
-.logout-btn{padding:7px 12px;background:rgba(255,255,255,.18);color:#fff;border:0;
+.logout-btn{padding:7px 14px;background:#fff;color:var(--text);border:0;
   border-radius:18px;cursor:pointer;font-weight:600;font-size:11.5px;min-height:34px;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  border:1px solid rgba(255,255,255,.12)}
-.logout-btn:hover{background:rgba(255,255,255,.28)}
+  border:1px solid var(--line)}
+.logout-btn:hover{background:var(--ice-melt-soft)}
 
 /* Tabs - glass */
 nav.tabs{background:rgba(255,255,255,.65);border-bottom:1px solid var(--line);
@@ -468,10 +466,10 @@ table.tx td.amt.neg{color:var(--neg)}
 /* Tablet (≤880px) */
 @media (max-width:880px){
   .container{padding:16px 14px 40px}
-  .header-inner{padding:18px 14px 20px}
-  .dashboard-title{font-size:21px}
-  .header-sub{font-size:12px}
-  .header-top{margin-bottom:12px}
+  .header-inner{padding:12px 14px;gap:12px}
+  .dashboard-title{font-size:17px}
+  .header-sub{font-size:11.5px}
+  .header-logo{height:38px}
   .kpi-row{grid-template-columns:repeat(2,1fr);gap:12px}
   .row2{grid-template-columns:1fr}
   .kpi{padding:14px 16px}
@@ -493,17 +491,12 @@ table.tx td.amt.neg{color:var(--neg)}
 @media (max-width:520px){
   body{font-size:13.5px}
   .container{padding:12px 10px 32px}
-  .header-inner{padding:16px 14px 18px}
-  .header-top{margin-bottom:10px;gap:10px}
-  .company-pill{font-size:10.5px;padding:5px 11px;letter-spacing:.4px}
-  .brand-block{gap:8px}
-  .header-logo{height:32px;padding:4px 8px;border-radius:8px}
+  .header-inner{padding:10px 12px;gap:10px}
   .pw-brand-logo{max-width:220px;max-height:90px}
-  .dashboard-title{font-size:18px;line-height:1.25}
-  .title-light{display:block;font-size:14px;opacity:.85;margin-top:2px}
-  .title-sep{display:none}
-  .header-sub{font-size:11.5px;line-height:1.4}
-  .rate-note{font-size:11px}
+  .header-logo{height:34px}
+  .dashboard-title{font-size:15.5px;line-height:1.25}
+  .header-sub{font-size:11px;line-height:1.4}
+  .rate-note{font-size:10.5px}
   .header-controls{gap:6px}
   .btn-grp{padding:3px;gap:1px}
   .btn-grp button{padding:6px 10px;font-size:11.5px;min-height:32px}
