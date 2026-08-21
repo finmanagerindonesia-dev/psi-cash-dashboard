@@ -1,30 +1,28 @@
 /* PSI Cash Flow Dashboard - Liquid Glass UI + Mobile Responsive
    Inspired by iOS 26 / macOS Tahoe design language */
 :root{
-  /* Pantone palette:
-     Ice Melt 13-4306   - soft pastel teal/cyan  (#C8DDDA)
-     Lemon Icing 11-0515 - pale creamy yellow    (#F0EBB6)
-     Cloud Dancer 11-4201 - warm off-white       (#F1EDE4) */
-  --ice-melt:#C8DDDA;
-  --ice-melt-soft:#E4EEED;
-  --ice-melt-mid:#8FB5B1;
-  --ice-melt-dark:#5F8B87;
-  --lemon-icing:#F0EBB6;
-  --lemon-icing-soft:#F8F5D6;
-  --cloud-dancer:#F1EDE4;
-  --cloud-dancer-warm:#E8E3D6;
+  /* Clean modern SaaS palette - bright, crisp, professional
+     Inspired by Stripe / Linear / Vercel fintech aesthetics */
+  --ice-melt:#DBEAFE;         /* light blue tint */
+  --ice-melt-soft:#EFF6FF;    /* very light blue */
+  --ice-melt-mid:#93C5FD;
+  --ice-melt-dark:#1E40AF;
+  --lemon-icing:#FEF3C7;      /* soft amber tint */
+  --lemon-icing-soft:#FFFBEB;
+  --cloud-dancer:#F8FAFC;     /* clean off-white */
+  --cloud-dancer-warm:#F1F5F9;
 
-  --brand:#3D6B70;   --brand2:#5F8B87;   --brand3:#8FB5B1;
-  --bg:#F1EDE4;      /* Cloud Dancer */
-  --card:rgba(255,255,255,.78);
-  --card-strong:rgba(255,255,255,.94);
-  --line:rgba(61,107,112,.15);
-  --text:#2E3B47; --muted:#7A8590;
-  --pos:#4A8A5E; --pos-bg:rgba(74,138,94,.12);
-  --neg:#B24040; --neg-bg:rgba(178,64,64,.12);
-  --warn:#A67B4A; --warn-bg:rgba(240,235,182,.55);
-  --shadow:0 2px 8px rgba(61,107,112,.08),0 16px 36px rgba(61,107,112,.09);
-  --shadow-lg:0 4px 14px rgba(61,107,112,.10),0 24px 60px rgba(61,107,112,.13);
+  --brand:#1E40AF;   --brand2:#2563EB;   --brand3:#3B82F6;  /* royal blue */
+  --bg:#F5F7FB;      /* clean cool white */
+  --card:rgba(255,255,255,.96);
+  --card-strong:#ffffff;
+  --line:#E2E8F0;    /* clean slate border */
+  --text:#0F172A;    --muted:#64748B;
+  --pos:#059669;     --pos-bg:rgba(5,150,105,.10);       /* emerald */
+  --neg:#DC2626;     --neg-bg:rgba(220,38,38,.10);       /* red */
+  --warn:#D97706;    --warn-bg:rgba(254,243,199,.70);    /* amber */
+  --shadow:0 1px 3px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+  --shadow-lg:0 2px 6px rgba(15,23,42,.08),0 16px 40px rgba(15,23,42,.10);
   --r:14px;
   --glass-blur:saturate(180%) blur(22px);
 }
@@ -33,9 +31,8 @@ html,body{margin:0;padding:0;color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   font-size:14px;line-height:1.45;
   background:
-    radial-gradient(1200px 600px at 0% -10%, rgba(200,221,218,.55), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(240,235,182,.40), transparent 60%),
-    radial-gradient(700px 400px at 100% 100%, rgba(143,181,177,.30), transparent 60%),
+    radial-gradient(1200px 600px at 0% -10%, rgba(219,234,254,.6), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(147,197,253,.20), transparent 60%),
     var(--bg);
   min-height:100vh}
 button,select,input{font-family:inherit}
@@ -69,17 +66,15 @@ header{background:transparent;color:var(--text);position:relative;padding:18px 0
 .stamp{display:inline}
 
 /* Currency toggle - glass pill */
-.btn-grp{display:inline-flex;background:rgba(200,221,218,.35);border-radius:22px;
-  padding:4px;gap:2px;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  border:1px solid var(--line)}
+.btn-grp{display:inline-flex;background:#F1F5F9;border-radius:22px;
+  padding:4px;gap:2px;border:1px solid var(--line)}
 .btn-grp button{background:transparent;color:var(--muted);border:0;padding:7px 14px;
   border-radius:18px;cursor:pointer;font-weight:600;font-size:12.5px;
   display:inline-flex;align-items:center;gap:4px;transition:all .15s;
   min-height:34px}
-.btn-grp button:hover:not(.active){background:rgba(255,255,255,.6);color:var(--text)}
-.btn-grp button.active{background:#1F3644;color:#fff;
-  box-shadow:0 1px 4px rgba(31,54,68,.25)}
+.btn-grp button:hover:not(.active){background:#fff;color:var(--text)}
+.btn-grp button.active{background:#0F172A;color:#fff;
+  box-shadow:0 1px 3px rgba(15,23,42,.25)}
 .btn-grp button .cur-sym{font-weight:700}
 .logout-btn{padding:7px 14px;background:#fff;color:var(--text);border:0;
   border-radius:18px;cursor:pointer;font-weight:600;font-size:11.5px;min-height:34px;
@@ -251,11 +246,11 @@ table.cf tr.leaf:hover td{background:rgba(31,56,100,.04)}
 .collapse-btn.secondary{background:#fff;color:var(--brand);
   border:1.5px solid var(--brand2)}
 .collapse-btn.secondary:hover{background:var(--brand);color:#fff}
-/* CF Summary balance rows (BEGINNING/ENDING - Pantone Lemon Icing) */
-table.cf tr.balance-row td{background:linear-gradient(180deg,var(--lemon-icing),var(--lemon-icing-soft))!important;
-  font-weight:700;color:#5D4A18;border-top:2px solid #C9B75E;border-bottom:2px solid #C9B75E}
-table.cf tr.balance-row td.amount.pos{color:#3D6B4A}
-table.cf tr.balance-row td.amount.neg{color:#8F3838}
+/* CF Summary balance rows (BEGINNING/ENDING - clean amber highlight) */
+table.cf tr.balance-row td{background:linear-gradient(180deg,#FEF3C7,#FFFBEB)!important;
+  font-weight:700;color:#78350F;border-top:2px solid #F59E0B;border-bottom:2px solid #F59E0B}
+table.cf tr.balance-row td.amount.pos{color:#065F46}
+table.cf tr.balance-row td.amount.neg{color:#991B1B}
 
 /* CF Summary interactive tree (click to expand/collapse) */
 tr.cf-expandable{cursor:pointer;user-select:none}
@@ -378,7 +373,7 @@ table.tx td.amt.neg{color:var(--neg)}
 
 /* Password gate */
 .pw-gate{position:fixed;inset:0;
-  background:linear-gradient(135deg,#1F3644 0%,#2E4C60 45%,#3F627A 100%);
+  background:linear-gradient(135deg,#0F172A 0%,#1E3A8A 50%,#2563EB 100%);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   z-index:9999;padding:20px;gap:22px}
 .pw-brand{display:flex;justify-content:center;align-items:center;max-width:420px;width:100%}
