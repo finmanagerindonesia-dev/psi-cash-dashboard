@@ -202,7 +202,7 @@ def build_dashboard_data(rows, agg, bb_agg, net_change_agg, lines, periods,
 
 def _build_transactions(rows):
     """Compact list of non-Beginning-Balance transactions for client-side
-    period-range filtering. Short keys to reduce JSON size."""
+    period-range filtering + Data Explorer tab. Short keys to reduce JSON size."""
     out = []
     for r in rows:
         if r.get("category") == "Beginning Balance":
@@ -212,12 +212,18 @@ def _build_transactions(rows):
         d = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])
         out.append({
             "d": d,
+            "u": r.get("unit") or "",
             "b": r.get("bank") or "",
+            "cur": r.get("bank_currency") or "IDR",
             "c": r.get("category") or "",
             "s": r.get("sub_category") or "",
             "dt": r.get("detail_category") or "",
             "p": r.get("parties") or "",
+            "dl": r.get("details") or "",
+            "vt": r.get("vch_type") or "",
+            "vn": r.get("vch_no") or "",
             "a": r.get("amount", 0),
+            "au": r.get("amount_usd"),
         })
     return out
 

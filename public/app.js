@@ -274,6 +274,8 @@ function render(){
     r.appendChild(renderDailyInOutChart());
   } else if(TAB === "period") {
     renderPeriodReview(r);
+  } else if(TAB === "master") {
+    renderMasterData(r);
   } else {
     r.appendChild(renderKPIs());
     r.appendChild(renderRow2());
@@ -1630,3 +1632,249 @@ document.querySelectorAll(".tab").forEach(btn => {
   });
 });
 load();
+
+// =============================================================================
+// DATA EXPLORER (Master Data with per-column filters + sort + CSV export)
+// =============================================================================
+let MASTER_STATE = {
+  filters: {}, sortKey: "d", sortDir: "desc", pageSize: 100, page: 1
+};
+
+const MASTER_COLS = [
+  {k:"d",   label:"Date",       w:"110px", type:"text"},
+  {k:"u",   label:"Unit",       w:"90px",  type:"text"},
+  {k:"b",   label:"Bank",       w:"170px", type:"text"},
+  {k:"cur", label:"Cur",        w:"60px",  type:"text"},
+  {k:"c",   label:"Category",   w:"200px", type:"text"},
+  {k:"s",   label:"Sub-Category",w:"200px",type:"text"},
+  {k:"dt",  label:"Detail",     w:"200px", type:"text"},
+  {k:"p",   label:"Parties",    w:"220px", type:"text"},
+  {k:"dl",  label:"Details",    w:"260px", type:"text"},
+  {k:"vt",  label:"Vch Type",   w:"110px", type:"text"},
+  {k:"vn",  label:"Vch No",     w:"120px", type:"text"},
+  {k:"a",   label:"Amount (IDR)",w:"150px",type:"num", align:"right"},
+  {k:"au",  label:"Amount (USD)",w:"130px",type:"num", align:"right"}
+];
+
+function _masterMatch(row, key, filterVal){
+  if(!filterVal) return true;
+  const v = row[key];
+  const col = MASTER_COLS.find(c=>c.k===key);
+  if(col && col.type === "num"){
+    // Support >N, <N, >=N, <=N, =N, N..N (range), otherwise substring on formatted
+    const s = String(filterVal).trim();
+    const num = (v===null||v===undefined||v==="") ? null : Number(v);
+    const rangeMatch = s.match(/^(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)$/);
+    if(rangeMatch){
+      if(num===null) return false;
+      return num >= Number(rangeMatch[1]) && num <= Number(rangeMatch[2]);
+    }
+    const opMatch = s.match(/^(>=|<=|>|<|=)\s*(-?\d+(?:\.\d+)?)$/);
+    if(opMatch){
+      if(num===null) return false;
+      const op = opMatch[1], n = Number(opMatch[2]);
+      if(op===">") return num > n;
+      if(op==="<") return num < n;
+      if(op===">=") return num >= n;
+      if(op==="<=") return num <= n;
+      if(op==="=") return num === n;
+    }
+    // fallback: substring on plain string form
+    if(num===null) return "".includes(s);
+    return String(num).includes(s.replace(/,/g,""));
+  }
+  const sv = (v===null||v===undefined) ? "" : String(v);
+  return sv.toLowerCase().includes(String(filterVal).toLowerCase());
+}
+
+function _masterFilteredRows(){
+  const txs = (DATA && DATA.transactions) ? DATA.transactions : [];
+  const gs = (MASTER_STATE.globalSearch || "").toLowerCase();
+  return txs.filter(r => {
+    // per-column filters
+    for(const k in MASTER_STATE.filters){
+      if(!_masterMatch(r, k, MASTER_STATE.filters[k])) return false;
+    }
+    // global search: any field contains
+    if(gs){
+      let hit = false;
+      for(const c of MASTER_COLS){
+        const v = r[c.k];
+        if(v!==null && v!==undefined && String(v).toLowerCase().includes(gs)){
+          hit = true; break;
+        }
+      }
+      if(!hit) return false;
+    }
+    return true;
+  });
+}
+
+function _masterSorted(rows){
+  const k = MASTER_STATE.sortKey, dir = MASTER_STATE.sortDir === "asc" ? 1 : -1;
+  const col = MASTER_COLS.find(c=>c.k===k);
+  const isNum = col && col.type === "num";
+  const arr = rows.slice();
+  arr.sort((a,b)=>{
+    let av = a[k], bv = b[k];
+    if(isNum){
+      av = (av===null||av===undefined||av==="") ? -Infinity : Number(av);
+      bv = (bv===null||bv===undefined||bv==="") ? -Infinity : Number(bv);
+      return (av - bv) * dir;
+    }
+    av = (av===null||av===undefined) ? "" : String(av);
+    bv = (bv===null||bv===undefined) ? "" : String(bv);
+    return av.localeCompare(bv) * dir;
+  });
+  return arr;
+}
+
+function renderMasterData(root){
+  const wrap = document.createElement("section");
+  wrap.className = "card master-card";
+  wrap.innerHTML = `
+    <h2>
+      <span>Data Explorer — Cash Monitoring Master</span>
+      <span class="master-toolbar">
+        <input type="text" id="masterGlobalSearch" class="master-search" placeholder="Search all columns...">
+        <button class="btn-secondary" id="masterResetBtn">Reset Filters</button>
+        <button class="btn-primary" id="masterCsvBtn">Download CSV</button>
+      </span>
+    </h2>
+    <div class="body master-body">
+      <div class="master-meta" id="masterMeta"></div>
+      <div class="master-scroll">
+        <table class="master-tbl" id="masterTbl">
+          <thead>
+            <tr class="master-hdr">
+              ${MASTER_COLS.map(c=>`<th style="min-width:${c.w};${c.align==="right"?"text-align:right":""}" data-k="${c.k}">
+                <span class="master-hdr-lbl" data-sort="${c.k}">${c.label}<span class="master-sort-ind" id="msi-${c.k}"></span></span>
+              </th>`).join("")}
+            </tr>
+            <tr class="master-flt">
+              ${MASTER_COLS.map(c=>`<th><input type="text" class="master-flt-inp" data-k="${c.k}" placeholder="${c.type==="num"?">100000":"Filter..."}" value="${(MASTER_STATE.filters[c.k]||"").replace(/"/g,"&quot;")}"></th>`).join("")}
+            </tr>
+          </thead>
+          <tbody id="masterBody"></tbody>
+        </table>
+      </div>
+      <div class="master-pager" id="masterPager"></div>
+    </div>`;
+  root.appendChild(wrap);
+
+  // Global search
+  const gs = document.getElementById("masterGlobalSearch");
+  gs.value = MASTER_STATE.globalSearch || "";
+  let gsT;
+  gs.addEventListener("input", ()=>{ clearTimeout(gsT); gsT=setTimeout(()=>{
+    MASTER_STATE.globalSearch = gs.value; MASTER_STATE.page = 1; _masterRedraw();
+  }, 180); });
+
+  // Reset
+  document.getElementById("masterResetBtn").addEventListener("click", ()=>{
+    MASTER_STATE.filters = {}; MASTER_STATE.globalSearch = ""; MASTER_STATE.page = 1;
+    gs.value = "";
+    wrap.querySelectorAll(".master-flt-inp").forEach(i=>i.value="");
+    _masterRedraw();
+  });
+
+  // Column filters
+  wrap.querySelectorAll(".master-flt-inp").forEach(inp=>{
+    let t;
+    inp.addEventListener("input", ()=>{
+      clearTimeout(t);
+      t = setTimeout(()=>{
+        const k = inp.dataset.k, v = inp.value.trim();
+        if(v) MASTER_STATE.filters[k] = v; else delete MASTER_STATE.filters[k];
+        MASTER_STATE.page = 1;
+        _masterRedraw();
+      }, 180);
+    });
+  });
+
+  // Sort click
+  wrap.querySelectorAll(".master-hdr-lbl").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const k = el.dataset.sort;
+      if(MASTER_STATE.sortKey === k){
+        MASTER_STATE.sortDir = MASTER_STATE.sortDir === "asc" ? "desc" : "asc";
+      } else {
+        MASTER_STATE.sortKey = k;
+        MASTER_STATE.sortDir = (MASTER_COLS.find(c=>c.k===k).type === "num") ? "desc" : "asc";
+      }
+      _masterRedraw();
+    });
+  });
+
+  // CSV export
+  document.getElementById("masterCsvBtn").addEventListener("click", _masterExportCSV);
+
+  _masterRedraw();
+}
+
+function _masterRedraw(){
+  const rows = _masterSorted(_masterFilteredRows());
+  const total = (DATA.transactions||[]).length;
+  document.getElementById("masterMeta").innerHTML =
+    `<b>${rows.length.toLocaleString()}</b> of ${total.toLocaleString()} transactions` +
+    (Object.keys(MASTER_STATE.filters).length || MASTER_STATE.globalSearch ? ` <span class="muted">(filtered)</span>` : ``);
+  MASTER_COLS.forEach(c=>{
+    const el = document.getElementById("msi-"+c.k);
+    if(!el) return;
+    if(MASTER_STATE.sortKey === c.k){
+      el.textContent = MASTER_STATE.sortDir === "asc" ? " ▲" : " ▼";
+    } else el.textContent = "";
+  });
+  const ps = MASTER_STATE.pageSize, pg = MASTER_STATE.page || 1;
+  const start = (pg-1)*ps, end = start + ps;
+  const view = rows.slice(start, end);
+  const tbody = document.getElementById("masterBody");
+  tbody.innerHTML = view.map(r=>{
+    return `<tr>` + MASTER_COLS.map(c=>{
+      let v = r[c.k];
+      if(c.type === "num"){
+        if(v===null||v===undefined||v==="") v = "";
+        else v = Number(v).toLocaleString(undefined, {minimumFractionDigits: c.k==="au"?2:0, maximumFractionDigits: c.k==="au"?2:0});
+      } else {
+        v = (v===null||v===undefined) ? "" : escapeHtml(String(v));
+      }
+      return `<td style="${c.align==="right"?"text-align:right;font-variant-numeric:tabular-nums":""}">${v}</td>`;
+    }).join("") + `</tr>`;
+  }).join("");
+  // Pager
+  const pages = Math.max(1, Math.ceil(rows.length / ps));
+  const pager = document.getElementById("masterPager");
+  if(pages <= 1){ pager.innerHTML = ""; return; }
+  const btn = (n, lbl, dis)=>`<button class="pg-btn${n===pg?" active":""}" ${dis?"disabled":""} data-p="${n}">${lbl||n}</button>`;
+  let html = btn(Math.max(1,pg-1), "‹ Prev", pg<=1);
+  const win = 2;
+  const first = Math.max(1, pg-win), last = Math.min(pages, pg+win);
+  if(first > 1){ html += btn(1); if(first > 2) html += `<span class="pg-sep">…</span>`; }
+  for(let i=first;i<=last;i++) html += btn(i);
+  if(last < pages){ if(last < pages-1) html += `<span class="pg-sep">…</span>`; html += btn(pages); }
+  html += btn(Math.min(pages,pg+1), "Next ›", pg>=pages);
+  html += ` <span class="pg-info">Page ${pg} of ${pages}</span>`;
+  pager.innerHTML = html;
+  pager.querySelectorAll(".pg-btn").forEach(b=>{
+    b.addEventListener("click", ()=>{ MASTER_STATE.page = Number(b.dataset.p); _masterRedraw(); });
+  });
+}
+
+function _masterExportCSV(){
+  const rows = _masterSorted(_masterFilteredRows());
+  const esc = v => {
+    if(v===null||v===undefined) return "";
+    const s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  };
+  const header = MASTER_COLS.map(c=>esc(c.label)).join(",");
+  const body = rows.map(r => MASTER_COLS.map(c=>esc(r[c.k])).join(",")).join("\n");
+  const csv = "﻿" + header + "\n" + body;
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "psi-cash-master-" + new Date().toISOString().slice(0,10) + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
