@@ -586,9 +586,8 @@ function renderPeriodReview(root){
     });
   });
 
-  // KPIs + waterfall + drill-downs + activity
+  // KPIs + drill-downs + activity
   root.appendChild(renderPeriodKPIs(PERIOD_START, PERIOD_END));
-  root.appendChild(renderPeriodWaterfall(PERIOD_START, PERIOD_END));
   const row2 = el(`<div class="row2"></div>`);
   row2.appendChild(renderPeriodIncoming(PERIOD_START, PERIOD_END));
   row2.appendChild(renderPeriodOutflow(PERIOD_START, PERIOD_END));
