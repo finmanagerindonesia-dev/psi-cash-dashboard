@@ -1227,7 +1227,7 @@ function renderBankMatrix(){
   return card;
 }
 
-function renderBoardAnalysis(){
+function renderBoardAnalysisOld(){
   const D = DATA;
   const m = D.bank_position_matrix;
   const p = D.periods.find(x => x.key === SELECTED_PERIOD);
@@ -2040,6 +2040,154 @@ function renderPeriodWaterfall(start, end){
       plugins: [connectorPlugin]
     });
   }, 10);
+
+  return card;
+}
+
+// =============================================================================
+// BOARD ANALYSIS - SANKEY DIAGRAM (Money Flow Story)
+// Replaces the waterfall. Sources -> Cash Pool -> Destinations.
+// =============================================================================
+function renderBoardAnalysis(){
+  const D = DATA;
+  const m = D.bank_position_matrix;
+  const p = D.periods.find(x => x.key === SELECTED_PERIOD);
+  if(!p) return el(`<div></div>`);
+
+  // Opening + closing for context (shown in summary strip, not the diagram)
+  let opening = 0;
+  for(const b of m.banks){
+    opening += m.data[b][SELECTED_PERIOD].opening || 0;
+  }
+  const ending = m.totals[SELECTED_PERIOD] || 0;
+
+  const inc = D.incoming_drill[SELECTED_PERIOD] || {groups: []};
+  const outDrill = D.outflow_drill[SELECTED_PERIOD] || {buckets: []};
+  const incomingItems = (inc.groups || [])
+    .filter(g => Math.abs(g.amount) > 0.5)
+    .sort((a,b) => Math.abs(b.amount) - Math.abs(a.amount));
+  const outflowItems = (outDrill.buckets || [])
+    .filter(b => Math.abs(b.amount) > 0.5)
+    .sort((a,b) => Math.abs(b.amount) - Math.abs(a.amount));
+
+  const totalIn = incomingItems.reduce((a,g) => a + Math.abs(g.amount), 0);
+  const totalOut = outflowItems.reduce((a,b) => a + Math.abs(b.amount), 0);
+  const net = totalIn - totalOut;
+  const div = FORMATS[CUR].div;
+
+  // Truncate label helper (executives don't want tiny wrapped text)
+  const shortLbl = (s, n=22) => (s.length <= n) ? s : s.slice(0, n-1) + "…";
+
+  // Build flows: inflow items -> Cash Pool, Cash Pool -> outflow items
+  // If surplus (net > 0), add "Increase in Cash Reserves" node
+  // If deficit (net < 0), add "Draw from Cash Reserves" as an inflow into Cash Pool
+  const CASH = "Cash Pool";
+  const flows = [];
+  const labels = {[CASH]: CASH};
+
+  for(const g of incomingItems){
+    const name = "IN: " + shortLbl(g.label);
+    labels[name] = g.label;
+    flows.push({from: name, to: CASH, flow: Math.abs(g.amount) / div});
+  }
+  if(net < 0){
+    const name = "IN: Draw from Reserves";
+    labels[name] = "Draw from Cash Reserves";
+    flows.push({from: name, to: CASH, flow: Math.abs(net) / div});
+  }
+  for(const b of outflowItems){
+    const name = "OUT: " + shortLbl(b.label.replace(/^Outflow\s*-\s*/, ""));
+    labels[name] = b.label;
+    flows.push({from: CASH, to: name, flow: Math.abs(b.amount) / div});
+  }
+  if(net > 0){
+    const name = "OUT: Increase in Reserves";
+    labels[name] = "Increase in Cash Reserves";
+    flows.push({from: CASH, to: name, flow: net / div});
+  }
+
+  // Assign colors per node
+  const nodeColors = {[CASH]: "#0F172A"};
+  const inflowPalette = ["#059669","#10B981","#34D399","#6EE7B7","#A7F3D0","#065F46","#047857"];
+  const outflowPalette = ["#DC2626","#EF4444","#F87171","#FCA5A5","#FECACA","#991B1B","#B91C1C","#7F1D1D"];
+  incomingItems.forEach((g,i) => nodeColors["IN: " + shortLbl(g.label)] = inflowPalette[i % inflowPalette.length]);
+  outflowItems.forEach((b,i) => nodeColors["OUT: " + shortLbl(b.label.replace(/^Outflow\s*-\s*/, ""))] = outflowPalette[i % outflowPalette.length]);
+  if(net > 0) nodeColors["OUT: Increase in Reserves"] = "#1E40AF";
+  if(net < 0) nodeColors["IN: Draw from Reserves"] = "#D97706";
+
+  // Column priority: 0 = left (inflow), 1 = center (Cash Pool), 2 = right (outflow)
+  const columns = {[CASH]: 1};
+  for(const key of Object.keys(nodeColors)){
+    if(key === CASH) continue;
+    columns[key] = key.startsWith("IN:") ? 0 : 2;
+  }
+
+  const card = el(`<div class="card">
+    <h2>Money Flow &mdash; Sources to Destinations
+      <span class="pill">${escapeHtml(p.label_long)}</span>
+    </h2>
+    <div class="legend-mini">
+      <span><i style="background:#059669"></i>Sources (inflow)</span>
+      <span><i style="background:#0F172A"></i>Cash Pool</span>
+      <span><i style="background:#DC2626"></i>Destinations (outflow)</span>
+      <span class="muted" style="margin-left:auto">Ribbon thickness = amount</span>
+    </div>
+    <div class="body">
+      <div class="chart-wrap sankey-wrap"><canvas id="ch_sankey"></canvas></div>
+      <div class="waterfall-summary">
+        <div class="ws-item ws-open"><div class="ws-lbl">Opening</div><div class="ws-val">${fmtBig(opening)}</div></div>
+        <div class="ws-item ws-net"><div class="ws-lbl">Total Inflow</div><div class="ws-val pos">${fmtBig(totalIn)}</div></div>
+        <div class="ws-item ws-net"><div class="ws-lbl">Total Outflow</div><div class="ws-val neg">${fmtBig(totalOut)}</div></div>
+        <div class="ws-item ws-net"><div class="ws-lbl">Net Change</div><div class="ws-val ${net>=0?'pos':'neg'}">${fmtBig(net)}</div></div>
+        <div class="ws-item ws-close"><div class="ws-lbl">Closing</div><div class="ws-val">${fmtBig(ending)}</div></div>
+      </div>
+    </div></div>`);
+
+  setTimeout(() => {
+    if(CHARTS.sankey) CHARTS.sankey.destroy();
+    const ctx = document.getElementById("ch_sankey");
+    if(!ctx) return;
+    if(typeof Chart === "undefined" || !Chart.registry.controllers.get("sankey")){
+      ctx.parentElement.innerHTML = `<div class="empty">Sankey library failed to load. Please refresh.</div>`;
+      return;
+    }
+    CHARTS.sankey = new Chart(ctx, {
+      type: "sankey",
+      data: {
+        datasets: [{
+          label: "Cash Flow",
+          data: flows,
+          colorFrom: (c) => nodeColors[c.dataset.data[c.dataIndex].from] || "#94A3B8",
+          colorTo:   (c) => nodeColors[c.dataset.data[c.dataIndex].to]   || "#94A3B8",
+          colorMode: "gradient",
+          alpha: 0.55,
+          borderWidth: 0,
+          labels: Object.fromEntries(Object.entries(labels).map(([k,v]) => [k, k === CASH ? "Cash Pool" : v])),
+          priority: columns,
+          size: "max",
+          nodeWidth: 14,
+          nodePadding: 12,
+          font: {size: 11.5, weight: "600"}
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        layout: {padding: {left: 4, right: 4, top: 10, bottom: 10}},
+        plugins: {
+          legend: {display: false},
+          tooltip: {
+            callbacks: {
+              label: (c) => {
+                const d = c.dataset.data[c.dataIndex];
+                const val = d.flow * div;
+                return ` ${labels[d.from] || d.from}  →  ${labels[d.to] || d.to}: ${fmtBig(val)}`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }, 30);
 
   return card;
 }
