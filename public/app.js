@@ -2044,9 +2044,10 @@ function renderPeriodWaterfall(start, end){
   return card;
 }
 
+
 // =============================================================================
-// BOARD ANALYSIS - SANKEY DIAGRAM (Money Flow Story)
-// Replaces the waterfall. Sources -> Cash Pool -> Destinations.
+// BOARD ANALYSIS - MULTI-LEVEL SANKEY (dynamic, flowy)
+// 5 columns: [Parties] -> [Inflow Category] -> [Cash Pool] -> [Outflow Bucket] -> [Sub-Category]
 // =============================================================================
 function renderBoardAnalysis(){
   const D = DATA;
@@ -2054,86 +2055,200 @@ function renderBoardAnalysis(){
   const p = D.periods.find(x => x.key === SELECTED_PERIOD);
   if(!p) return el(`<div></div>`);
 
-  // Opening + closing for context (shown in summary strip, not the diagram)
   let opening = 0;
-  for(const b of m.banks){
-    opening += m.data[b][SELECTED_PERIOD].opening || 0;
-  }
+  for(const b of m.banks){ opening += m.data[b][SELECTED_PERIOD].opening || 0; }
   const ending = m.totals[SELECTED_PERIOD] || 0;
 
-  const inc = D.incoming_drill[SELECTED_PERIOD] || {groups: []};
-  const outDrill = D.outflow_drill[SELECTED_PERIOD] || {buckets: []};
-  const incomingItems = (inc.groups || [])
-    .filter(g => Math.abs(g.amount) > 0.5)
-    .sort((a,b) => Math.abs(b.amount) - Math.abs(a.amount));
-  const outflowItems = (outDrill.buckets || [])
-    .filter(b => Math.abs(b.amount) > 0.5)
-    .sort((a,b) => Math.abs(b.amount) - Math.abs(a.amount));
+  // Build multi-level structure from raw transactions of SELECTED_PERIOD
+  const per = SELECTED_PERIOD;
+  const inflowByCat = {};   // { catLabel: { parties: {name: amt}, total } }
+  const outflowByBucket = {}; // { bucket: { subs: {sub: amt}, total } }
 
-  const totalIn = incomingItems.reduce((a,g) => a + Math.abs(g.amount), 0);
-  const totalOut = outflowItems.reduce((a,b) => a + Math.abs(b.amount), 0);
+  for(const t of (DATA.transactions || [])){
+    if(!t.d || t.d.slice(0,7) !== per) continue;
+    if(t.c === "Incoming"){
+      const catLbl = INCOMING_LABELS_MAP[t.dt] || t.dt || "Other Receipts";
+      const party  = (t.p && t.p.trim()) || "(Unnamed)";
+      if(!inflowByCat[catLbl]) inflowByCat[catLbl] = {parties:{}, total:0};
+      inflowByCat[catLbl].parties[party] = (inflowByCat[catLbl].parties[party] || 0) + Math.abs(t.a);
+      inflowByCat[catLbl].total += Math.abs(t.a);
+    } else if(t.c && t.c.startsWith("Outflow")){
+      const bucket = bucketForCategory(t.c);
+      let sub;
+      if(t.c === "Outflow - Indirect Expense") sub = t.s || "Other";
+      else if(t.c === "Outflow - Direct Expense") sub = (t.s && t.s !== "Direct Expense") ? t.s : (t.dt || "Other");
+      else if(t.c === "Outflow - Finance Cost") sub = (t.s && t.s !== "Finance Cost") ? t.s : (t.dt || "Other");
+      else sub = t.dt || t.s || "Other";
+      if(!outflowByBucket[bucket]) outflowByBucket[bucket] = {subs:{}, total:0};
+      outflowByBucket[bucket].subs[sub] = (outflowByBucket[bucket].subs[sub] || 0) + Math.abs(t.a);
+      outflowByBucket[bucket].total += Math.abs(t.a);
+    }
+  }
+
+  const totalIn  = Object.values(inflowByCat).reduce((a,g) => a + g.total, 0);
+  const totalOut = Object.values(outflowByBucket).reduce((a,g) => a + g.total, 0);
   const net = totalIn - totalOut;
   const div = FORMATS[CUR].div;
 
-  // Truncate label helper (executives don't want tiny wrapped text)
-  const shortLbl = (s, n=22) => (s.length <= n) ? s : s.slice(0, n-1) + "…";
-
-  // Build flows: inflow items -> Cash Pool, Cash Pool -> outflow items
-  // If surplus (net > 0), add "Increase in Cash Reserves" node
-  // If deficit (net < 0), add "Draw from Cash Reserves" as an inflow into Cash Pool
+  const shortLbl = (s, n=26) => (String(s).length <= n) ? String(s) : String(s).slice(0, n-1) + "…";
   const CASH = "Cash Pool";
-  const flows = [];
-  const labels = {[CASH]: CASH};
 
-  for(const g of incomingItems){
-    const name = "IN: " + shortLbl(g.label);
-    labels[name] = g.label;
-    flows.push({from: name, to: CASH, flow: Math.abs(g.amount) / div});
-  }
-  if(net < 0){
-    const name = "IN: Draw from Reserves";
-    labels[name] = "Draw from Cash Reserves";
-    flows.push({from: name, to: CASH, flow: Math.abs(net) / div});
-  }
-  for(const b of outflowItems){
-    const name = "OUT: " + shortLbl(b.label.replace(/^Outflow\s*-\s*/, ""));
-    labels[name] = b.label;
-    flows.push({from: CASH, to: name, flow: Math.abs(b.amount) / div});
-  }
-  if(net > 0){
-    const name = "OUT: Increase in Reserves";
-    labels[name] = "Increase in Cash Reserves";
-    flows.push({from: CASH, to: name, flow: net / div});
-  }
-
-  // Assign colors per node
+  // Node registry
   const nodeColors = {[CASH]: "#0F172A"};
-  const inflowPalette = ["#059669","#10B981","#34D399","#6EE7B7","#A7F3D0","#065F46","#047857"];
-  const outflowPalette = ["#DC2626","#EF4444","#F87171","#FCA5A5","#FECACA","#991B1B","#B91C1C","#7F1D1D"];
-  incomingItems.forEach((g,i) => nodeColors["IN: " + shortLbl(g.label)] = inflowPalette[i % inflowPalette.length]);
-  outflowItems.forEach((b,i) => nodeColors["OUT: " + shortLbl(b.label.replace(/^Outflow\s*-\s*/, ""))] = outflowPalette[i % outflowPalette.length]);
-  if(net > 0) nodeColors["OUT: Increase in Reserves"] = "#1E40AF";
-  if(net < 0) nodeColors["IN: Draw from Reserves"] = "#D97706";
+  const priority   = {[CASH]: 2};
+  const nodeLabels = {[CASH]: "Cash Pool"};
 
-  // Column priority: 0 = left (inflow), 1 = center (Cash Pool), 2 = right (outflow)
-  const columns = {[CASH]: 1};
-  for(const key of Object.keys(nodeColors)){
-    if(key === CASH) continue;
-    columns[key] = key.startsWith("IN:") ? 0 : 2;
+  // Inflow palettes
+  const inflowGreens = ["#059669","#10B981","#34D399","#6EE7B7","#065F46","#047857","#0EA57A"];
+  const inflowAmbers = ["#B45309","#D97706","#F59E0B","#FBBF24"];
+  const inflowBlues  = ["#1E40AF","#2563EB","#3B82F6","#60A5FA"];
+  // Outflow palettes per bucket family
+  const outflowReds  = ["#DC2626","#EF4444","#F87171","#FCA5A5","#991B1B","#B91C1C","#7F1D1D"];
+  const outflowPurps = ["#7C3AED","#8B5CF6","#A78BFA","#C4B5FD"];
+
+  // Assign inflow category colors: Customer=green, Bank Loan=blue, Others=amber
+  const inflowCatColor = (cat) => {
+    const c = cat.toLowerCase();
+    if(c.includes("customer")) return inflowGreens[0];
+    if(c.includes("bank loan") || c.includes("loan drawdown")) return inflowBlues[0];
+    return inflowAmbers[0];
+  };
+  const inflowPartyPalette = (cat) => {
+    const c = cat.toLowerCase();
+    if(c.includes("customer")) return inflowGreens;
+    if(c.includes("bank loan") || c.includes("loan drawdown")) return inflowBlues;
+    return inflowAmbers;
+  };
+  const outflowBucketColor = (b, i) => {
+    const bl = b.toLowerCase();
+    if(bl.includes("capex")) return outflowPurps[0];
+    return outflowReds[i % outflowReds.length];
+  };
+
+  const flows = [];
+
+  // -------- INFLOW SIDE --------
+  // Sort categories by size desc
+  const sortedInCats = Object.entries(inflowByCat).sort((a,b) => b[1].total - a[1].total);
+  sortedInCats.forEach(([catLbl, data]) => {
+    const catNode = "IC: " + shortLbl(catLbl);
+    nodeLabels[catNode] = catLbl;
+    nodeColors[catNode] = inflowCatColor(catLbl);
+    priority[catNode]   = 1;
+
+    // Split parties: top N + "Other" bucket
+    const partyEntries = Object.entries(data.parties).sort((a,b) => b[1] - a[1]);
+    const TOP_P = Math.max(3, Math.min(6, partyEntries.length));
+    const topParties = partyEntries.slice(0, TOP_P);
+    const restSum = partyEntries.slice(TOP_P).reduce((a,x) => a + x[1], 0);
+    const pal = inflowPartyPalette(catLbl);
+
+    // Only split into parties if category is meaningful in size
+    // (skip party column when only 1 party — go straight cat -> cash)
+    if(topParties.length === 1 && restSum === 0){
+      // No party column; single party name flows straight
+      const only = topParties[0];
+      const pNode = "P: " + shortLbl(only[0]);
+      nodeLabels[pNode] = only[0];
+      nodeColors[pNode] = pal[0];
+      priority[pNode]   = 0;
+      flows.push({from: pNode,  to: catNode, flow: only[1] / div});
+      flows.push({from: catNode, to: CASH,   flow: data.total / div});
+    } else {
+      topParties.forEach(([name, amt], i) => {
+        const pNode = "P: " + shortLbl(name);
+        nodeLabels[pNode] = name;
+        nodeColors[pNode] = pal[(i+1) % pal.length];
+        priority[pNode]   = 0;
+        flows.push({from: pNode, to: catNode, flow: amt / div});
+      });
+      if(restSum > 0.5){
+        const pNode = "P: Other " + shortLbl(catLbl, 16);
+        nodeLabels[pNode] = "Other " + catLbl;
+        nodeColors[pNode] = "#94A3B8";
+        priority[pNode]   = 0;
+        flows.push({from: pNode, to: catNode, flow: restSum / div});
+      }
+      flows.push({from: catNode, to: CASH, flow: data.total / div});
+    }
+  });
+
+  // Deficit balancer: if outflow > inflow, add "Draw from Reserves" as inflow into Cash
+  if(net < 0){
+    const n = "IC: Draw from Reserves";
+    nodeLabels[n] = "Draw from Cash Reserves";
+    nodeColors[n] = "#D97706";
+    priority[n]   = 1;
+    flows.push({from: n, to: CASH, flow: Math.abs(net) / div});
   }
+
+  // -------- OUTFLOW SIDE --------
+  const sortedOutBuckets = Object.entries(outflowByBucket).sort((a,b) => b[1].total - a[1].total);
+  sortedOutBuckets.forEach(([bucket, data], bi) => {
+    const bNode = "OB: " + shortLbl(bucket);
+    nodeLabels[bNode] = bucket;
+    nodeColors[bNode] = outflowBucketColor(bucket, bi);
+    priority[bNode]   = 3;
+
+    flows.push({from: CASH, to: bNode, flow: data.total / div});
+
+    const subEntries = Object.entries(data.subs).sort((a,b) => b[1] - a[1]);
+    const TOP_S = Math.max(3, Math.min(5, subEntries.length));
+    const topSubs = subEntries.slice(0, TOP_S);
+    const restSum = subEntries.slice(TOP_S).reduce((a,x) => a + x[1], 0);
+    const bucketBase = outflowBucketColor(bucket, bi);
+
+    if(topSubs.length === 1 && restSum === 0){
+      // Single sub — skip sub column; keep flow visible via a leaf node
+      const only = topSubs[0];
+      const sNode = "S: " + shortLbl(only[0]);
+      nodeLabels[sNode] = only[0];
+      nodeColors[sNode] = bucketBase;
+      priority[sNode]   = 4;
+      flows.push({from: bNode, to: sNode, flow: only[1] / div});
+    } else {
+      topSubs.forEach(([name, amt], i) => {
+        const sNode = "S: " + shortLbl(name);
+        nodeLabels[sNode] = name;
+        nodeColors[sNode] = outflowReds[(i+bi+1) % outflowReds.length];
+        priority[sNode]   = 4;
+        flows.push({from: bNode, to: sNode, flow: amt / div});
+      });
+      if(restSum > 0.5){
+        const sNode = "S: Other " + shortLbl(bucket, 14);
+        nodeLabels[sNode] = "Other " + bucket;
+        nodeColors[sNode] = "#94A3B8";
+        priority[sNode]   = 4;
+        flows.push({from: bNode, to: sNode, flow: restSum / div});
+      }
+    }
+  });
+
+  // Surplus balancer
+  if(net > 0){
+    const n = "OB: Increase in Reserves";
+    nodeLabels[n] = "Increase in Cash Reserves";
+    nodeColors[n] = "#1E40AF";
+    priority[n]   = 3;
+    flows.push({from: CASH, to: n, flow: net / div});
+  }
+
+  const nodeCount = Object.keys(nodeLabels).length;
+  // Dynamic height: 22px per node baseline, min 460, max 780
+  const dynHeight = Math.min(780, Math.max(460, nodeCount * 22));
 
   const card = el(`<div class="card">
     <h2>Money Flow &mdash; Sources to Destinations
       <span class="pill">${escapeHtml(p.label_long)}</span>
     </h2>
     <div class="legend-mini">
-      <span><i style="background:#059669"></i>Sources (inflow)</span>
+      <span><i style="background:#059669"></i>Customer / Inflow</span>
       <span><i style="background:#0F172A"></i>Cash Pool</span>
-      <span><i style="background:#DC2626"></i>Destinations (outflow)</span>
-      <span class="muted" style="margin-left:auto">Ribbon thickness = amount</span>
+      <span><i style="background:#DC2626"></i>Outflow / Sub-category</span>
+      <span class="muted" style="margin-left:auto">Ribbon thickness = amount &middot; Top 6 parties per category shown</span>
     </div>
     <div class="body">
-      <div class="chart-wrap sankey-wrap"><canvas id="ch_sankey"></canvas></div>
+      <div class="chart-wrap sankey-wrap" style="height:${dynHeight}px"><canvas id="ch_sankey"></canvas></div>
       <div class="waterfall-summary">
         <div class="ws-item ws-open"><div class="ws-lbl">Opening</div><div class="ws-val">${fmtBig(opening)}</div></div>
         <div class="ws-item ws-net"><div class="ws-lbl">Total Inflow</div><div class="ws-val pos">${fmtBig(totalIn)}</div></div>
@@ -2148,7 +2263,7 @@ function renderBoardAnalysis(){
     const ctx = document.getElementById("ch_sankey");
     if(!ctx) return;
     if(typeof Chart === "undefined" || !Chart.registry.controllers.get("sankey")){
-      ctx.parentElement.innerHTML = `<div class="empty">Sankey library failed to load. Please refresh.</div>`;
+      ctx.parentElement.innerHTML = `<div class="empty">Sankey library failed to load. Please refresh the page.</div>`;
       return;
     }
     CHARTS.sankey = new Chart(ctx, {
@@ -2162,25 +2277,33 @@ function renderBoardAnalysis(){
           colorMode: "gradient",
           alpha: 0.55,
           borderWidth: 0,
-          labels: Object.fromEntries(Object.entries(labels).map(([k,v]) => [k, k === CASH ? "Cash Pool" : v])),
-          priority: columns,
+          labels: nodeLabels,
+          priority: priority,
           size: "max",
-          nodeWidth: 14,
-          nodePadding: 12,
-          font: {size: 11.5, weight: "600"}
+          nodeWidth: 12,
+          nodePadding: 10,
+          font: {size: 11, weight: "600", family: '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif'}
         }]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        layout: {padding: {left: 4, right: 4, top: 10, bottom: 10}},
+        layout: {padding: {left: 6, right: 6, top: 8, bottom: 8}},
         plugins: {
           legend: {display: false},
           tooltip: {
+            displayColors: false,
             callbacks: {
+              title: (ctx) => {
+                const d = ctx[0].dataset.data[ctx[0].dataIndex];
+                return (nodeLabels[d.from] || d.from) + "  →  " + (nodeLabels[d.to] || d.to);
+              },
               label: (c) => {
                 const d = c.dataset.data[c.dataIndex];
                 const val = d.flow * div;
-                return ` ${labels[d.from] || d.from}  →  ${labels[d.to] || d.to}: ${fmtBig(val)}`;
+                const pctIn  = totalIn  > 0 ? (val / totalIn  * 100) : 0;
+                const pctOut = totalOut > 0 ? (val / totalOut * 100) : 0;
+                const isIn = priority[d.to] <= 2;
+                return "  " + fmtBig(val) + "  (" + (isIn?pctIn:pctOut).toFixed(1) + "% of " + (isIn?"inflow":"outflow") + ")";
               }
             }
           }

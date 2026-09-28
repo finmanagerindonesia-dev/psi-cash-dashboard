@@ -629,11 +629,11 @@ table.master-tbl tbody tr:nth-child(2n):hover td{background:#EFF6FF}
   table.master-tbl tbody td{padding:5px 8px;font-size:11px;max-width:180px}
 }
 
-/* Sankey chart (Board Analysis - Money Flow) */
-.chart-wrap.sankey-wrap{height:420px;position:relative}
+/* Sankey chart (Board Analysis - Money Flow) - height set inline dynamically */
+.chart-wrap.sankey-wrap{position:relative}
 @media (max-width:880px){
-  .chart-wrap.sankey-wrap{height:340px}
+  .chart-wrap.sankey-wrap{max-height:520px}
 }
 @media (max-width:520px){
-  .chart-wrap.sankey-wrap{height:280px}
+  .chart-wrap.sankey-wrap{max-height:420px}
 }
