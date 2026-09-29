@@ -2285,8 +2285,8 @@ function _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, 
     nodes.push({id, name: nodeLabels[id] || id, color: nodeColors[id] || "#94A3B8", layer: layerFor(id)});
   }
   const links = flows.map(f => ({
-    source: nodeIdx[f.from],
-    target: nodeIdx[f.to],
+    source: f.from,   // string id — matches nodeId(d => d.id)
+    target: f.to,
     value: Math.max(0.0001, f.flow),
     fromColor: nodeColors[f.from] || "#94A3B8",
     toColor:   nodeColors[f.to]   || "#94A3B8",
