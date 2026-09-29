@@ -2090,7 +2090,7 @@ function renderBoardAnalysis(){
   const net = totalIn - totalOut;
   const div = FORMATS[CUR].div;
 
-  const shortLbl = (s, n=26) => (String(s).length <= n) ? String(s) : String(s).slice(0, n-1) + "…";
+  const shortLbl = (s, n=20) => (String(s).length <= n) ? String(s) : String(s).slice(0, n-1) + "…";
   const CASH = "Cash Pool";
 
   // Node registry
@@ -2234,8 +2234,8 @@ function renderBoardAnalysis(){
   }
 
   const nodeCount = Object.keys(nodeLabels).length;
-  // Dynamic height: more space per node so ribbons curve nicely (S-shape)
-  const dynHeight = Math.min(900, Math.max(520, nodeCount * 32));
+  // Dynamic height: keep compact — enough room to curve but fit page
+  const dynHeight = Math.min(680, Math.max(420, nodeCount * 22));
 
   const card = el(`<div class="card">
     <h2>Money Flow &mdash; Sources to Destinations
@@ -2293,11 +2293,11 @@ function _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, 
     fromId: f.from, toId: f.to,
   }));
 
-  // Dimensions
+  // Dimensions - constrained width so chart doesn't span full page
   const rect = wrap.getBoundingClientRect();
-  const W = Math.max(700, rect.width);
+  const W = Math.min(1000, Math.max(560, rect.width));
   const H = dynHeight;
-  const margin = {top: 14, right: 130, bottom: 14, left: 130};
+  const margin = {top: 16, right: 175, bottom: 16, left: 175};
 
   // Build SVG
   const NS = "http://www.w3.org/2000/svg";
@@ -2306,7 +2306,11 @@ function _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, 
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.style.display = "block";
   svg.style.width = "100%";
-  svg.style.height = "100%";
+  svg.style.height = "auto";
+  svg.style.maxWidth = W + "px";
+  svg.style.margin = "0 auto";
+  // Preserve aspect so labels don't clip when container is wider
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   wrap.appendChild(svg);
 
   // d3-sankey generator — nodeAlign uses the node.layer field we set explicitly
