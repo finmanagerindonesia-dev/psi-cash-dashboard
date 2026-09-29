@@ -2090,7 +2090,7 @@ function renderBoardAnalysis(){
   const net = totalIn - totalOut;
   const div = FORMATS[CUR].div;
 
-  const shortLbl = (s, n=20) => (String(s).length <= n) ? String(s) : String(s).slice(0, n-1) + "…";
+  const shortLbl = (s, n=16) => (String(s).length <= n) ? String(s) : String(s).slice(0, n-1) + "…";
   const CASH = "Cash Pool";
 
   // Node registry
@@ -2297,13 +2297,16 @@ function _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, 
   const rect = wrap.getBoundingClientRect();
   const W = Math.min(1000, Math.max(560, rect.width));
   const H = dynHeight;
-  const margin = {top: 16, right: 175, bottom: 16, left: 175};
+  const margin = {top: 22, right: 150, bottom: 22, left: 150};
 
   // Build SVG
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
+  // Extra viewBox padding on left/right so long labels don't clip
+  const PAD = 40;
   svg.setAttribute("width", W); svg.setAttribute("height", H);
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("viewBox", `${-PAD} 0 ${W + PAD*2} ${H}`);
+  svg.style.overflow = "visible";
   svg.style.display = "block";
   svg.style.width = "100%";
   svg.style.height = "auto";
@@ -2414,9 +2417,31 @@ function _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, 
     label.setAttribute("font-weight", "600");
     label.setAttribute("font-family", '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif');
     label.setAttribute("fill", "#0F172A");
-    const val = n.value * div;
-    label.textContent = `${n.name}  ${fmtCompact(val)}`;
+    label.textContent = n.name;
     g.appendChild(label);
+
+    // Amount on second line (smaller, muted)
+    const val = n.value * div;
+    const amt = document.createElementNS(NS, "text");
+    if(isCash){
+      amt.setAttribute("x", (n.x0 + n.x1) / 2);
+      amt.setAttribute("y", n.y0 - 6 + 13);
+      amt.setAttribute("text-anchor", "middle");
+    } else if(isLeft){
+      amt.setAttribute("x", n.x0 - 8);
+      amt.setAttribute("y", (n.y0 + n.y1) / 2 + 4 + 13);
+      amt.setAttribute("text-anchor", "end");
+    } else {
+      amt.setAttribute("x", n.x1 + 8);
+      amt.setAttribute("y", (n.y0 + n.y1) / 2 + 4 + 13);
+      amt.setAttribute("text-anchor", "start");
+    }
+    amt.setAttribute("font-size", "10");
+    amt.setAttribute("font-weight", "500");
+    amt.setAttribute("font-family", '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif');
+    amt.setAttribute("fill", "#64748B");
+    amt.textContent = fmtCompact(val);
+    g.appendChild(amt);
 
     gNodes.appendChild(g);
   });

@@ -631,7 +631,7 @@ table.master-tbl tbody tr:nth-child(2n):hover td{background:#EFF6FF}
 
 /* Sankey chart (Board Analysis - Money Flow) - constrained + centered */
 .chart-wrap.sankey-wrap{position:relative;max-width:1000px;margin:0 auto;
-  display:flex;align-items:center;justify-content:center;overflow:hidden}
+  display:flex;align-items:center;justify-content:center;overflow:visible;padding:0 8px}
 .chart-wrap.sankey-wrap svg{max-width:100%;height:auto}
 @media (max-width:880px){
   .chart-wrap.sankey-wrap{max-height:520px}
