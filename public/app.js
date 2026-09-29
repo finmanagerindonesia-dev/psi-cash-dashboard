@@ -2234,8 +2234,8 @@ function renderBoardAnalysis(){
   }
 
   const nodeCount = Object.keys(nodeLabels).length;
-  // Dynamic height: 22px per node baseline, min 460, max 780
-  const dynHeight = Math.min(780, Math.max(460, nodeCount * 22));
+  // Dynamic height: more space per node so ribbons curve nicely (S-shape)
+  const dynHeight = Math.min(900, Math.max(520, nodeCount * 32));
 
   const card = el(`<div class="card">
     <h2>Money Flow &mdash; Sources to Destinations
@@ -2248,7 +2248,7 @@ function renderBoardAnalysis(){
       <span class="muted" style="margin-left:auto">Ribbon thickness = amount &middot; Top 6 parties per category shown</span>
     </div>
     <div class="body">
-      <div class="chart-wrap sankey-wrap" style="height:${dynHeight}px"><canvas id="ch_sankey"></canvas></div>
+      <div class="chart-wrap sankey-wrap" id="ch_sankey_wrap" style="height:${dynHeight}px"></div>
       <div class="waterfall-summary">
         <div class="ws-item ws-open"><div class="ws-lbl">Opening</div><div class="ws-val">${fmtBig(opening)}</div></div>
         <div class="ws-item ws-net"><div class="ws-lbl">Total Inflow</div><div class="ws-val pos">${fmtBig(totalIn)}</div></div>
@@ -2258,59 +2258,166 @@ function renderBoardAnalysis(){
       </div>
     </div></div>`);
 
-  setTimeout(() => {
-    if(CHARTS.sankey) CHARTS.sankey.destroy();
-    const ctx = document.getElementById("ch_sankey");
-    if(!ctx) return;
-    if(typeof Chart === "undefined" || !Chart.registry.controllers.get("sankey")){
-      ctx.parentElement.innerHTML = `<div class="empty">Sankey library failed to load. Please refresh the page.</div>`;
-      return;
-    }
-    CHARTS.sankey = new Chart(ctx, {
-      type: "sankey",
-      data: {
-        datasets: [{
-          label: "Cash Flow",
-          data: flows,
-          colorFrom: (c) => nodeColors[c.dataset.data[c.dataIndex].from] || "#94A3B8",
-          colorTo:   (c) => nodeColors[c.dataset.data[c.dataIndex].to]   || "#94A3B8",
-          colorMode: "gradient",
-          alpha: 0.55,
-          borderWidth: 0,
-          labels: nodeLabels,
-          priority: priority,
-          size: "max",
-          nodeWidth: 12,
-          nodePadding: 10,
-          font: {size: 11, weight: "600", family: '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif'}
-        }]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        layout: {padding: {left: 6, right: 6, top: 8, bottom: 8}},
-        plugins: {
-          legend: {display: false},
-          tooltip: {
-            displayColors: false,
-            callbacks: {
-              title: (ctx) => {
-                const d = ctx[0].dataset.data[ctx[0].dataIndex];
-                return (nodeLabels[d.from] || d.from) + "  →  " + (nodeLabels[d.to] || d.to);
-              },
-              label: (c) => {
-                const d = c.dataset.data[c.dataIndex];
-                const val = d.flow * div;
-                const pctIn  = totalIn  > 0 ? (val / totalIn  * 100) : 0;
-                const pctOut = totalOut > 0 ? (val / totalOut * 100) : 0;
-                const isIn = priority[d.to] <= 2;
-                return "  " + fmtBig(val) + "  (" + (isIn?pctIn:pctOut).toFixed(1) + "% of " + (isIn?"inflow":"outflow") + ")";
-              }
-            }
-          }
-        }
-      }
-    });
-  }, 30);
-
+  setTimeout(() => _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, totalOut, dynHeight), 30);
   return card;
+}
+
+// D3-Sankey renderer with smooth cubic-bezier ribbons (like the reference image)
+function _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, totalOut, dynHeight){
+  const wrap = document.getElementById("ch_sankey_wrap");
+  if(!wrap) return;
+  wrap.innerHTML = "";
+  if(typeof d3 === "undefined" || typeof d3.sankey !== "function"){
+    wrap.innerHTML = `<div class="empty">D3-Sankey library failed to load. Please refresh the page.</div>`;
+    return;
+  }
+
+  // Build node registry with fixed columns via layer index
+  const nodeIdx = {};
+  const nodes = [];
+  const layerFor = (id) => {
+    const pri = priority[id] ?? 2;
+    // Layers: 0=parties, 1=inflow cat, 2=Cash Pool, 3=outflow bucket, 4=sub-cat
+    return pri;
+  };
+  for(const id of Object.keys(nodeLabels)){
+    nodeIdx[id] = nodes.length;
+    nodes.push({id, name: nodeLabels[id] || id, color: nodeColors[id] || "#94A3B8", layer: layerFor(id)});
+  }
+  const links = flows.map(f => ({
+    source: nodeIdx[f.from],
+    target: nodeIdx[f.to],
+    value: Math.max(0.0001, f.flow),
+    fromColor: nodeColors[f.from] || "#94A3B8",
+    toColor:   nodeColors[f.to]   || "#94A3B8",
+    fromId: f.from, toId: f.to,
+  }));
+
+  // Dimensions
+  const rect = wrap.getBoundingClientRect();
+  const W = Math.max(700, rect.width);
+  const H = dynHeight;
+  const margin = {top: 14, right: 130, bottom: 14, left: 130};
+
+  // Build SVG
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", W); svg.setAttribute("height", H);
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.style.display = "block";
+  svg.style.width = "100%";
+  svg.style.height = "100%";
+  wrap.appendChild(svg);
+
+  // d3-sankey generator
+  const sankey = d3.sankey()
+    .nodeId(d => d.id)
+    .nodeAlign(d3.sankeyJustify)         // spreads columns evenly
+    .nodeWidth(12)
+    .nodePadding(18)
+    .extent([[margin.left, margin.top], [W - margin.right, H - margin.bottom]]);
+
+  const graph = {nodes: nodes.map(d => Object.assign({}, d)), links: links.map(d => Object.assign({}, d))};
+
+  // Override auto layer with our fixed layer (force columns)
+  sankey(graph);
+  // Reassign x positions by fixed layer
+  const layers = [0,1,2,3,4];
+  const usableW = W - margin.left - margin.right;
+  const colX = layers.map(l => margin.left + (l/(layers.length-1)) * usableW);
+  graph.nodes.forEach(n => {
+    const cx = colX[n.layer];
+    const w = n.x1 - n.x0;
+    n.x0 = cx - w/2;
+    n.x1 = cx + w/2;
+  });
+  // Re-run layout iterations to reposition Y based on new X
+  sankey.update(graph);
+
+  // Gradient defs — one per link (source color → target color)
+  const defs = document.createElementNS(NS, "defs");
+  svg.appendChild(defs);
+  graph.links.forEach((lnk, i) => {
+    const g = document.createElementNS(NS, "linearGradient");
+    g.setAttribute("id", `sg${i}`);
+    g.setAttribute("gradientUnits", "userSpaceOnUse");
+    g.setAttribute("x1", lnk.source.x1);
+    g.setAttribute("x2", lnk.target.x0);
+    const s1 = document.createElementNS(NS, "stop");
+    s1.setAttribute("offset", "0%"); s1.setAttribute("stop-color", lnk.fromColor);
+    const s2 = document.createElementNS(NS, "stop");
+    s2.setAttribute("offset", "100%"); s2.setAttribute("stop-color", lnk.toColor);
+    g.appendChild(s1); g.appendChild(s2);
+    defs.appendChild(g);
+  });
+
+  // Links group — cubic bezier via d3.sankeyLinkHorizontal (smooth curves!)
+  const linkGen = d3.sankeyLinkHorizontal();
+  const gLinks = document.createElementNS(NS, "g");
+  gLinks.setAttribute("fill", "none");
+  svg.appendChild(gLinks);
+  graph.links.forEach((lnk, i) => {
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("d", linkGen(lnk));
+    path.setAttribute("stroke", `url(#sg${i})`);
+    path.setAttribute("stroke-width", Math.max(1, lnk.width));
+    path.setAttribute("stroke-opacity", "0.55");
+    path.style.transition = "stroke-opacity .15s";
+    // Tooltip via <title>
+    const t = document.createElementNS(NS, "title");
+    const val = lnk.value * div;
+    const isIn = (priority[lnk.toId] ?? 2) <= 2;
+    const denom = isIn ? totalIn : totalOut;
+    const pct = denom > 0 ? (val / denom * 100).toFixed(1) : "0";
+    t.textContent = `${nodeLabels[lnk.fromId]||lnk.fromId}  →  ${nodeLabels[lnk.toId]||lnk.toId}\n${fmtBig(val)}  (${pct}% of ${isIn?"inflow":"outflow"})`;
+    path.appendChild(t);
+    path.addEventListener("mouseenter", () => path.setAttribute("stroke-opacity", "0.85"));
+    path.addEventListener("mouseleave", () => path.setAttribute("stroke-opacity", "0.55"));
+    gLinks.appendChild(path);
+  });
+
+  // Nodes
+  const gNodes = document.createElementNS(NS, "g");
+  svg.appendChild(gNodes);
+  graph.nodes.forEach(n => {
+    const g = document.createElementNS(NS, "g");
+    const rect = document.createElementNS(NS, "rect");
+    rect.setAttribute("x", n.x0);
+    rect.setAttribute("y", n.y0);
+    rect.setAttribute("width", n.x1 - n.x0);
+    rect.setAttribute("height", Math.max(2, n.y1 - n.y0));
+    rect.setAttribute("fill", n.color);
+    rect.setAttribute("rx", "2");
+    const t = document.createElementNS(NS, "title");
+    t.textContent = `${n.name}\n${fmtBig(n.value * div)}`;
+    rect.appendChild(t);
+    g.appendChild(rect);
+
+    // Label
+    const label = document.createElementNS(NS, "text");
+    const isLeft = n.layer < 2;
+    const isCash = n.layer === 2;
+    if(isCash){
+      label.setAttribute("x", (n.x0 + n.x1) / 2);
+      label.setAttribute("y", n.y0 - 6);
+      label.setAttribute("text-anchor", "middle");
+    } else if(isLeft){
+      label.setAttribute("x", n.x0 - 8);
+      label.setAttribute("y", (n.y0 + n.y1) / 2 + 4);
+      label.setAttribute("text-anchor", "end");
+    } else {
+      label.setAttribute("x", n.x1 + 8);
+      label.setAttribute("y", (n.y0 + n.y1) / 2 + 4);
+      label.setAttribute("text-anchor", "start");
+    }
+    label.setAttribute("font-size", "11.5");
+    label.setAttribute("font-weight", "600");
+    label.setAttribute("font-family", '-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,sans-serif');
+    label.setAttribute("fill", "#0F172A");
+    const val = n.value * div;
+    label.textContent = `${n.name}  ${fmtCompact(val)}`;
+    g.appendChild(label);
+
+    gNodes.appendChild(g);
+  });
 }
