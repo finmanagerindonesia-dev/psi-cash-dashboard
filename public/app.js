@@ -2309,30 +2309,26 @@ function _renderD3Sankey(flows, nodeLabels, nodeColors, priority, div, totalIn, 
   svg.style.height = "100%";
   wrap.appendChild(svg);
 
-  // d3-sankey generator
+  // d3-sankey generator — nodeAlign uses the node.layer field we set explicitly
   const sankey = d3.sankey()
     .nodeId(d => d.id)
-    .nodeAlign(d3.sankeyJustify)         // spreads columns evenly
+    .nodeAlign(n => (n.layer !== undefined ? n.layer : 0))
     .nodeWidth(12)
     .nodePadding(18)
     .extent([[margin.left, margin.top], [W - margin.right, H - margin.bottom]]);
 
-  const graph = {nodes: nodes.map(d => Object.assign({}, d)), links: links.map(d => Object.assign({}, d))};
+  const graph = {
+    nodes: nodes.map(d => Object.assign({}, d)),
+    links: links.map(d => Object.assign({}, d)),
+  };
 
-  // Override auto layer with our fixed layer (force columns)
-  sankey(graph);
-  // Reassign x positions by fixed layer
-  const layers = [0,1,2,3,4];
-  const usableW = W - margin.left - margin.right;
-  const colX = layers.map(l => margin.left + (l/(layers.length-1)) * usableW);
-  graph.nodes.forEach(n => {
-    const cx = colX[n.layer];
-    const w = n.x1 - n.x0;
-    n.x0 = cx - w/2;
-    n.x1 = cx + w/2;
-  });
-  // Re-run layout iterations to reposition Y based on new X
-  sankey.update(graph);
+  try {
+    sankey(graph);
+  } catch(err){
+    console.error("D3-Sankey layout failed:", err);
+    wrap.innerHTML = `<div class="empty">Sankey render error: ${escapeHtml(err.message||"unknown")}</div>`;
+    return;
+  }
 
   // Gradient defs — one per link (source color → target color)
   const defs = document.createElementNS(NS, "defs");
