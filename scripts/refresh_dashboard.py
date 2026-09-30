@@ -159,21 +159,33 @@ def main():
     # ====================================================================
     if completed_periods:
         try:
-            from lib_pdf import write_cf_summary_pdf
-            today_str2 = datetime.now().strftime("%d %b %Y")
+            from lib_pdf import write_dashboard_pdf
+            # Use last day of last completed period as the "as of" label
+            last_p = completed_periods[-1]
+            y, mo = int(last_p[:4]), int(last_p[5:7])
+            # Last day of that month
+            import calendar
+            last_day = calendar.monthrange(y, mo)[1]
+            asof = datetime(y, mo, last_day)
+            asof_str = asof.strftime("%d %b %Y")
             current_period2 = today_period if today_period in periods else None
-            pdf_path = PUBLIC_DIR / "PSI Cash Flow Summary.pdf"
+            pdf_path = PUBLIC_DIR / "PSI Cash Flow Dashboard.pdf"
             logo = PUBLIC_DIR / "logo-header.png"
-            print("Writing PDF (IDR + INR, ready to print) ...")
-            write_cf_summary_pdf(
-                pdf_path, completed_lines, completed_periods,
+            print("Writing printed-dashboard PDF (executive summary + detail, IDR + INR) ...")
+            write_dashboard_pdf(
+                pdf_path,
+                completed_lines,
+                rows,
+                bb_agg,
+                completed_periods,
                 usd_rate, inr_rate,
                 current_period=current_period2,
-                as_of_label=today_str2,
+                as_of_label=asof_str,
                 logo_path=str(logo) if logo.exists() else None,
             )
             print(f"  Saved PDF: {pdf_path.relative_to(ROOT)}")
         except Exception as e:
+            import traceback; traceback.print_exc()
             print(f"  [WARN] PDF generation failed: {e}")
 
     print("Building dashboard data ...")
