@@ -154,6 +154,28 @@ def main():
     print(f"  Saved report: {REPORT_PATH.relative_to(ROOT)}")
     print(f"  Source NOT modified: {src.name}")
 
+    # ====================================================================
+    # PDF: ready-to-print CF Summary (IDR Million + INR Lakh)
+    # ====================================================================
+    if completed_periods:
+        try:
+            from lib_pdf import write_cf_summary_pdf
+            today_str2 = datetime.now().strftime("%d %b %Y")
+            current_period2 = today_period if today_period in periods else None
+            pdf_path = PUBLIC_DIR / "PSI Cash Flow Summary.pdf"
+            logo = PUBLIC_DIR / "logo-header.png"
+            print("Writing PDF (IDR + INR, ready to print) ...")
+            write_cf_summary_pdf(
+                pdf_path, completed_lines, completed_periods,
+                usd_rate, inr_rate,
+                current_period=current_period2,
+                as_of_label=today_str2,
+                logo_path=str(logo) if logo.exists() else None,
+            )
+            print(f"  Saved PDF: {pdf_path.relative_to(ROOT)}")
+        except Exception as e:
+            print(f"  [WARN] PDF generation failed: {e}")
+
     print("Building dashboard data ...")
     data = build_dashboard_data(rows, agg, bb_agg, net_change_agg,
                                 lines, periods, usd_rate, inr_rate,

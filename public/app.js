@@ -1481,6 +1481,9 @@ function renderCFSummary(){
         <a class="download-btn" href="${reportUrl}" download="PSI Cash Flow Report.xlsx" title="Download full Excel report">
           <span style="font-size:13px">⬇</span> Download Excel
         </a>
+        <a class="download-btn" href="PSI%20Cash%20Flow%20Summary.pdf" download="PSI Cash Flow Summary.pdf" title="Download print-ready PDF (IDR + INR)">
+          <span style="font-size:13px">⬇</span> Download PDF
+        </a>
         <button class="collapse-btn secondary" id="cfExpandAll" title="Expand all rows">Expand All</button>
         <button class="collapse-btn secondary" id="cfCollapseAll" title="Collapse to top level">Collapse All</button>
         <button class="collapse-btn" id="cfToggle">Show Details</button>

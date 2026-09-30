@@ -65,8 +65,8 @@ if exist "~$PSI Cash Monitoring Master.xlsx" (
 
 REM --- 3. Ensure required packages are installed ---
 call :LOG ""
-call :LOG "[1/4] Cek packages (openpyxl, cryptography) ..."
-%PY% -c "import openpyxl, cryptography" >nul 2>nul
+call :LOG "[1/4] Cek packages (openpyxl, cryptography, reportlab) ..."
+%PY% -c "import openpyxl, cryptography, reportlab" >nul 2>nul
 if errorlevel 1 (
     call :LOG "      Installing packages ..."
     %PY% -m pip install --quiet --upgrade pip >> "%LOGFILE%" 2>&1
