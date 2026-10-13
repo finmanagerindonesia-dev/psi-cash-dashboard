@@ -269,7 +269,6 @@ function render(){
   if(TAB === "daily") {
     r.appendChild(renderDailyKPIs());
     r.appendChild(renderDailyBankTable());
-    r.appendChild(renderWeeklyView());
     r.appendChild(renderDailyPositionChart());
     r.appendChild(renderDailyInOutChart());
   } else if(TAB === "period") {
@@ -322,7 +321,7 @@ function renderDailyKPIs(){
 
 function renderDailyBankTable(){
   const D = DATA.daily;
-  const showDates = D.dates.slice(-7).reverse();
+  const showDates = D.dates.slice(-30).reverse();
   const banks = D.banks;
   const usdMap = D.bank_position_usd || {};
   let headerCells = banks.map(b => {
